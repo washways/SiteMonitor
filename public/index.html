@@ -1,0 +1,92 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Unified WASH Dashboard</title>
+
+  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+</head>
+
+<body>
+  <header>
+    <h1>Unified WASH Dashboard</h1>
+    <div class="controls">
+      <div class="group">
+        <button id="btnViewMap" class="active">Map</button>
+        <button id="btnViewTable">Table</button>
+      </div>
+      <label class="chk">
+        <input id="malawiOnly" type="checkbox" />
+        Malawi only
+      </label>
+
+      <label>
+        Days
+        <input id="days" type="number" min="1" max="365" value="30" />
+      </label>
+
+      <button id="btnLast7" style="padding: 8px;">Last 7 Days</button>
+      <button id="btnLast2" style="padding: 8px;">Last 2 Days (High Res)</button>
+
+      <button id="reload">Load sites</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="left">
+      <div id="map"></div>
+      <div id="tableView" style="display:none; padding: 20px;">
+        <table id="sitesTable" style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #eee; text-align: left;">
+              <th style="padding: 8px;">Site Name</th>
+              <th style="padding: 8px;">Country</th>
+              <th style="padding: 8px;">Source</th>
+              <th style="padding: 8px;">Last Updated</th>
+              <th style="padding: 8px;">Latest Stats</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div id="tableView" style="display:none; padding: 20px;">
+        <table id="sitesTable" style="width:100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background: #eee; text-align: left;">
+              <th style="padding: 8px;">Site Name</th>
+              <th style="padding: 8px;">Country</th>
+              <th style="padding: 8px;">Source</th>
+              <th style="padding: 8px;">Last Updated</th>
+              <th style="padding: 8px;">Latest Stats</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="sitebar">
+        <select id="siteSelect">
+          <option value="">Select a site…</option>
+        </select>
+        <button id="loadSeries">Load series</button>
+      </div>
+
+      <pre id="status"></pre>
+    </section>
+
+    <section class="right">
+      <div id="chart"></div>
+      <pre id="detail"></pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+
+</html>
