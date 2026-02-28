@@ -4,7 +4,7 @@ A **static, browser-based dashboard** for monitoring UNICEF WASH water-pump site
 
 [![Deploy to GitHub Pages](https://github.com/washways/SiteMonitor/actions/workflows/deploy.yml/badge.svg)](https://github.com/washways/SiteMonitor/actions/workflows/deploy.yml)
 
-**Live Site →** [washways.github.io/SiteMonitor/login.html](https://washways.github.io/SiteMonitor/login.html)
+**Live Site →** [washways.org/SiteMonitor/login.html](https://washways.org/SiteMonitor/login.html)
 
 ---
 
