@@ -1,3 +1,8 @@
+// ====================== CONFIG & STATE ======================
+const DCP_BASE = "https://api-dev.dcp.solar/water";
+// Malawi bbox filter
+const MALAWI_BBOX = { latMin: -17.2, latMax: -9.2, lonMin: 32.5, lonMax: 36.1 };
+
 let map, layerGroup;
 let sites = [];
 let markersByKey = new Map();
@@ -6,24 +11,239 @@ const el = (id) => document.getElementById(id);
 const statusEl = el("status");
 const detailEl = el("detail");
 
+// ====================== HELPER FUNCTIONS ======================
 function logStatus(msg) {
-    statusEl.textContent = msg;
+    if (statusEl) statusEl.textContent = msg;
+}
+function keyOf(s) { return `${s.source}:${s.site_id}:${s.serial || ""}`; }
+function markerColor(source) { return (source === "SonSetLink") ? "#2563eb" : "#16a34a"; }
+
+function inMalawiBBox(lat, lon) {
+    const la = Number(lat), lo = Number(lon);
+    if (!Number.isFinite(la) || !Number.isFinite(lo)) return false;
+    return la >= MALAWI_BBOX.latMin && la <= MALAWI_BBOX.latMax && lo >= MALAWI_BBOX.lonMin && lo <= MALAWI_BBOX.lonMax;
 }
 
-function keyOf(s) {
-    return `${s.source}:${s.site_id}:${s.serial || ""}`;
+// ====================== SETTINGS / AUTH ======================
+const settingsModal = el("settingsModal");
+const btnSettings = el("btnSettings");
+const closeSettings = el("closeSettings");
+const saveSettings = el("saveSettings");
+
+btnSettings.onclick = () => {
+    el("dcpToken").value = localStorage.getItem("dcp_token") || "";
+    el("sslUser").value = localStorage.getItem("ssl_user") || "";
+    el("sslPass").value = localStorage.getItem("ssl_pass") || "";
+    settingsModal.style.display = "block";
+};
+
+// Token Debug Helper
+el("dcpToken").addEventListener("input", (e) => {
+    const len = e.target.value.trim().length;
+    const msg = len > 0 ? `Length: ${len} chars` : "";
+    let help = el("tokenHelp");
+    if (!help) {
+        help = document.createElement("small");
+        help.id = "tokenHelp";
+        help.style.display = "block";
+        help.style.color = "#666";
+        e.target.parentNode.appendChild(help);
+    }
+
+    if (len > 0 && len < 30) {
+        help.textContent = `${msg} (Too short? This might be an ID, not the Secret)`;
+        help.style.color = "red";
+    } else {
+        help.textContent = msg;
+        help.style.color = "#666";
+    }
+});
+
+closeSettings.onclick = () => settingsModal.style.display = "none";
+window.onclick = (e) => { if (e.target === settingsModal) settingsModal.style.display = "none"; };
+
+saveSettings.onclick = () => {
+    let raw = el("dcpToken").value;
+    // Remove " or ' or spaces
+    let clean = raw.replace(/["'\s]/g, "");
+
+    localStorage.setItem("dcp_token", clean);
+    localStorage.setItem("ssl_user", el("sslUser").value.trim());
+    localStorage.setItem("ssl_pass", el("sslPass").value.trim());
+    settingsModal.style.display = "none";
+    loadSites(); // Reload with new keys
+};
+
+function getKeys() {
+    return {
+        dcpToken: (localStorage.getItem("dcp_token") || "").trim(),
+        sslUser: (localStorage.getItem("ssl_user") || "").trim(),
+        sslPass: (localStorage.getItem("ssl_pass") || "").trim()
+    };
 }
 
-function markerColor(source) {
-    // SonSetLink = blue, VRM = green
-    return (source === "SonSetLink") ? "#2563eb" : "#16a34a";
+// ====================== API LOGIC (PORTED FROM SERVER.JS) ======================
+
+async function fetchJson(url, options = {}, silent = false) {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    if (!res.ok) {
+        if (!silent) console.error(`HTTP ${res.status}: ${text.slice(0, 100)}`);
+        throw new Error(`HTTP ${res.status}`);
+    }
+    if (!text.trim()) return {};
+    try { return JSON.parse(text); }
+    catch { throw new Error(`Expected JSON, got: ${text.slice(0, 50)}`); }
 }
 
-async function loadConfig() {
-    const cfg = await fetch("/api/config").then(r => r.json());
-    el("malawiOnly").checked = cfg.defaults.malawi_only;
-    el("days").value = cfg.defaults.days;
+// --- SONSETLINK ---
+async function sslSites() {
+    // Note: This URL might fail CORS.
+    const { sslUser, sslPass } = getKeys();
+    const base = "https://sonsetlink.org/water/technical";
+    if (!sslUser || !sslPass) return [];
+
+    const url = new URL(`${base}/sites.json.php`);
+    url.searchParams.set("login", sslUser);
+    url.searchParams.set("password", sslPass);
+
+    try {
+        const rows = await fetchJson(url.toString());
+        if (!Array.isArray(rows)) return [];
+        return rows.map(r => {
+            let ts = null;
+            if (r.most_recent_tx) {
+                const iso = String(r.most_recent_tx).trim().replace(" ", "T") + "Z";
+                const t = Date.parse(iso);
+                if (!isNaN(t)) ts = t / 1000;
+            }
+            return {
+                source: "SonSetLink",
+                site_id: String(r.site ?? ""),
+                serial: String(r.serial ?? ""),
+                site_name: String(r.name ?? ""),
+                country: String(r.location ?? ""),
+                last_updated: ts,
+                flow_total: Number(r.flow_total),
+                flow_unit: r.flow_unit,
+                lat: Number(r.latitude),
+                lon: Number(r.longitude)
+            };
+        });
+    } catch (e) {
+        console.warn("SonSetLink Error (CORS?):", e);
+        return [];
+    }
 }
+
+async function sslSeries(siteId, serial, startUtc, endUtc) {
+    const { sslUser, sslPass } = getKeys();
+    const base = "https://sonsetlink.org/water/technical";
+    const endpoints = ["usage.json.php", "usage1_msg.json.php", "usage8_msg.json.php", "usage12_msg.json.php"]; // usage1 is most common
+
+    for (const ep of endpoints) {
+        const url = new URL(`${base}/${ep}`);
+        url.searchParams.set("login", sslUser);
+        url.searchParams.set("password", sslPass);
+        url.searchParams.set("site", siteId);
+        url.searchParams.set("serial", serial);
+        url.searchParams.set("start_date", startUtc);
+        url.searchParams.set("end_date", endUtc);
+        url.searchParams.set("feature[]", "backfill");
+        url.searchParams.set("feature[]", "decumulation");
+
+        try {
+            const j = await fetchJson(url.toString(), {}, true); // silent=true to hide expected 404s
+            if (Array.isArray(j) && j.length) return { rows: j };
+        } catch { }
+    }
+    return { rows: [] };
+}
+
+// --- DCP WATER ---
+async function dcpWells(headers) {
+    const j = await fetchJson(DCP_BASE + "/v1/wells", { headers });
+    if (!Array.isArray(j)) return [];
+
+    return j.map(r => {
+        let lat = null, lon = null;
+        if (r.location && typeof r.location === 'object') {
+            lat = Number(r.location.latitude ?? r.location.lat);
+            lon = Number(r.location.longitude ?? r.location.lon);
+        } else if (typeof r.location === 'string') {
+            const parts = r.location.split(',');
+            if (parts.length === 2) {
+                lat = Number(parts[0]);
+                lon = Number(parts[1]);
+            }
+        }
+        return {
+            source: "DCP",
+            site_id: String(r.well_id),
+            site_name: String(r.name),
+            last_updated: r.commissioned_date ? (new Date(r.commissioned_date).getTime() / 1000) : null,
+            lat: lat, lon: lon, stats: {},
+            country: ""
+        };
+    });
+}
+
+async function dcpSeries(headers, wellId, startIso, endIso) {
+    const fetchParam = async (paramId) => {
+        try {
+            const url = new URL(DCP_BASE + "/v1/wells/" + wellId + "/timeseries");
+            url.searchParams.set("parameter", paramId);
+            const fmtIso = (iso) => iso.includes('.') ? iso.split('.')[0] + 'Z' : iso;
+            url.searchParams.set("from", fmtIso(startIso));
+            url.searchParams.set("to", fmtIso(endIso));
+
+            const payload = await fetchJson(url.toString(), { headers });
+            const values = payload.time_series?.values || [];
+
+            return values.filter(v => v.value !== undefined && v.value !== null).map(v => ({
+                code: paramId,
+                value: Number(v.value),
+                timestamp_ms: new Date(v.time).getTime()
+            }));
+        } catch (e) {
+            console.warn("Failed to fetch param " + paramId + " for well " + wellId, e);
+            return [];
+        }
+    };
+
+    const [flowPts, wlPts] = await Promise.all([
+        fetchParam("flow"),
+        fetchParam("water_level_above_pump")
+    ]);
+
+    return [...flowPts, ...wlPts];
+}
+
+
+function renderSparkline(data) {
+    if (!data || data.length < 2) return `<span style="color:#ccc; font-size:0.8em">No Trend</span>`;
+
+    const width = 100;
+    const height = 30;
+    const min = Math.min(...data);
+    const max = Math.max(...data);
+    const range = max - min;
+
+    if (range === 0) return `<svg width="${width}" height="${height}" style="background:#fcfcfc"><path d="M0,${height / 2} L${width},${height / 2}" stroke="#999" stroke-width="1" fill="none"/></svg>`;
+
+    const step = width / (data.length - 1);
+    const pts = data.map((val, i) => {
+        const x = i * step;
+        const y = height - ((val - min) / range) * height; // Invert Y
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    return `<svg width="${width}" height="${height}" style="background:#fcfcfc; border:1px solid #eee">
+          <path d="M${pts.join(' L')}" stroke="#007bff" stroke-width="1.5" fill="none" />
+        </svg>`;
+}
+
+// ====================== APP LOGIC ======================
 
 function initMap() {
     map = L.map("map").setView([-13.9, 33.8], 6);
@@ -33,33 +253,31 @@ function initMap() {
 
 function refreshDropdown() {
     const sel = el("siteSelect");
+    if (!sel) return; // Dropdown was removed in unified view
     const prev = sel.value;
     sel.innerHTML = `<option value="">Select a site…</option>`;
-
     const opts = sites.map(s => {
         const label = `[${s.source}] ${s.site_name || s.serial || s.site_id} (#${s.site_id})`;
         return { label, value: keyOf(s) };
     });
-
     opts.sort((a, b) => a.label.localeCompare(b.label));
-
     for (const o of opts) {
         const opt = document.createElement("option");
         opt.value = o.value;
         opt.textContent = o.label;
         sel.appendChild(opt);
     }
-
     if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
 }
 
 function refreshMap() {
     layerGroup.clearLayers();
     markersByKey.clear();
-
     const withCoords = sites.filter(s => Number.isFinite(s.lat) && Number.isFinite(s.lon));
+
     if (!withCoords.length) {
-        logStatus(`Loaded ${sites.length} sites. No coordinates to plot.`);
+        // If we have sites but no coords, warn. If no sites, don't warn unless loading finished.
+        if (sites.length > 0) logStatus(`Loaded ${sites.length} sites. No coordinates to plot.`);
         return;
     }
 
@@ -68,432 +286,369 @@ function refreshMap() {
 
     for (const s of withCoords) {
         const k = keyOf(s);
-
-        // Opacity Logic
         let opacity = 1.0;
         let ageText = "Unknown";
-
         if (s.last_updated) {
             const ageHours = (nowSec - s.last_updated) / 3600;
-            if (ageHours < 24) {
-                opacity = 1.0;
-                ageText = `${Math.round(ageHours)}h ago`;
-            } else if (ageHours < 24 * 7) {
-                // Linear fade from 1.0 at 24h to 0.4 at 7 days
-                const ageDays = ageHours / 24;
-                const fade = 0.6 * ((ageDays - 1) / 6);
-                opacity = Math.max(0.4, 1.0 - fade);
-                ageText = `${Math.round(ageDays)}d ago`;
-            } else {
-                opacity = 0.4;
-                ageText = "> 7d ago";
-            }
-        } else {
-            opacity = 0.2; // No date
-        }
+            if (ageHours < 24) { opacity = 1.0; ageText = `${Math.round(ageHours)}h ago`; }
+            else if (ageHours < 168) { opacity = 0.6; ageText = `${Math.round(ageHours / 24)}d ago`; }
+            else { opacity = 0.4; ageText = "> 7d ago"; }
+        } else { opacity = 0.2; }
 
         const m = L.circleMarker([s.lat, s.lon], {
-            radius: 6,
-            color: markerColor(s.source),
-            weight: 2,
-            opacity: opacity,
-            fillOpacity: Math.max(0.2, opacity * 0.9)
+            radius: 6, color: markerColor(s.source), weight: 2, opacity, fillOpacity: opacity * 0.9
         }).addTo(layerGroup);
 
-        const name = (s.site_name || s.serial || s.site_id);
-        m.bindPopup(`
-          <b>${name}</b><br/>
-          Source: ${s.source}<br/>
-          Site ID: ${s.site_id}<br/>
-          Serial: ${s.serial || ""}<br/>
-          Country: ${s.country || "Unknown"}<br/>
-          Last Update: ${ageText}<br/>
-        `);
-
-        m.on("click", () => { el("siteSelect").value = k; });
+        m.bindPopup(`<b>${s.site_name}</b><br/>${s.source}<br/>${ageText}`);
+        m.on("click", () => {
+            const sel = el("siteSelect");
+            if (sel) sel.value = k;
+            loadSeriesFromCache(s);
+        });
         markersByKey.set(k, m);
         bounds.push([s.lat, s.lon]);
     }
-
-    map.fitBounds(bounds, { padding: [25, 25] });
-    logStatus(`Loaded ${sites.length} sites (${withCoords.length} with coords).`);
+    if (bounds.length) map.fitBounds(bounds, { padding: [25, 25] });
+    logStatus(`Loaded ${sites.length} sites (${withCoords.length} on map).`);
 }
+
+// Global auth headers
+
 
 async function loadSites() {
+    const vrm = getKeys().dcpToken;
+    const ssl = getKeys().sslUser;
+
+    if ((!vrm || !vrm.trim()) && (!ssl || !ssl.trim())) {
+        // Prompt for settings if BOTH are empty
+        logStatus("Please configure API keys in Settings.");
+        settingsModal.style.display = "block";
+        return;
+    }
+
+    logStatus("Loading sites...");
     const malawiOnly = el("malawiOnly").checked;
-    logStatus("Loading sites…");
 
-    const res = await fetch(`/api/sites?malawi_only=${malawiOnly ? "true" : "false"}`);
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.error || "Failed to load sites");
+    // Parallel Fetch
+    const promises = [];
+    const allSites = [];
 
-    sites = j;
+    // DCP
+    const dcpToken = vrm; // mapped from getKeys().dcpToken above
+    if (dcpToken) {
+        promises.push((async () => {
+            try {
+                const headers = { "X-API-Key": dcpToken, "Accept": "application/json" };
+                const wells = await dcpWells(headers);
+                allSites.push(...wells);
+            } catch (e) {
+                console.error("DCP Load Error", e);
+                logStatus("DCP Error: " + e.message);
+            }
+        })());
+    }
+
+    // SSL
+    if (getKeys().sslUser) {
+        promises.push(sslSites().then(res => allSites.push(...res)));
+    }
+
+    await Promise.all(promises);
+
+    // Filter
+    sites = allSites.filter(s => {
+        if (!malawiOnly) return true;
+        const c = (s.country || "").toLowerCase();
+        return c === "malawi" || inMalawiBBox(s.lat, s.lon);
+    });
+
+    logStatus(`Done. Found ${sites.length} sites.`);
     refreshDropdown();
     refreshMap();
-}
-
-function getSelectedSite() {
-    const k = el("siteSelect").value;
-    if (!k) return null;
-    return sites.find(s => keyOf(s) === k) || null;
+    renderTable();
 }
 
 async function loadSeries() {
-    const s = getSelectedSite();
-    if (!s) {
-        detailEl.textContent = "Select a site first.";
-        return;
-    }
+    const k = el("siteSelect").value;
+    const s = sites.find(x => keyOf(x) === k);
+    if (!s) return;
+
     const days = Number(el("days").value || 30);
-
-    detailEl.textContent = "Loading series…";
+    const end = new Date();
+    const start = new Date(end.getTime() - days * 24 * 3600 * 1000);
     const chartContainer = el("chart");
-    chartContainer.innerHTML = ""; // Clear previous charts
+    chartContainer.innerHTML = "";
+    detailEl.textContent = "Loading data...";
 
-    const url = new URL("/api/series", window.location.origin);
-    url.searchParams.set("source", s.source);
-    url.searchParams.set("site_id", s.site_id);
-    url.searchParams.set("serial", s.serial || "");
-    url.searchParams.set("days", String(days));
+    let rows = [];
 
-    const res = await fetch(url.toString());
-    const j = await res.json();
-    if (!res.ok) throw new Error(j.error || "Failed to load series");
-
-    const titleBase = `${s.site_name || s.serial || ""} (#${s.site_id})`;
-
-    // Helper to add a chart div
-    const addChart = (id, trace, title) => {
-        const d = document.createElement("div");
-        d.id = id;
-        d.style.height = "300px";
-        d.style.marginBottom = "20px";
-        chartContainer.appendChild(d);
-        Plotly.newPlot(id, [trace], {
-            title: title,
-            margin: { l: 50, r: 20, t: 40, b: 40 },
-            showlegend: true
-        });
-    };
-
-    // Liters per pulse assumption
-    const LITERS_PER_PULSE = 10;
-
-    // Helper: Derive Flow Rate (m3/h) from Cumulative Series
-    // Returns { x: Date[], y: Number[] }
-    const deriveFlowRate = (sortedPoints) => {
-        const x = [];
-        const y = [];
-        for (let i = 1; i < sortedPoints.length; i++) {
-            const p1 = sortedPoints[i - 1];
-            const p2 = sortedPoints[i];
-
-            // Time delta in hours
-            const t1 = p1.timestamp_ms || p1.ts;
-            const t2 = p2.timestamp_ms || p2.ts; // Helper needs to handle both VRM/SSL shapes if possible
-            const hDelta = (t2 - t1) / (3600 * 1000);
-
-            if (hDelta <= 0 || hDelta > 24) continue; // Skip weird gaps or duplicates
-
-            // Value delta
-            const v1 = Number(p1.value ?? p1.val);
-            const v2 = Number(p2.value ?? p2.val);
-            const vDelta = v2 - v1;
-
-            if (vDelta < 0) continue; // Reset or roll-over, ignore
-
-            // Calc Flow Rate
-            // m3 = (pulses * L_per_pulse) / 1000
-            // rate = m3 / hours
-            const m3 = (vDelta * LITERS_PER_PULSE) / 1000;
-            const rate = m3 / hDelta;
-
-            // Plot at midpoint time? Or end time? End time is safer for "rate during this interval"
-            x.push(new Date(t2));
-            y.push(rate);
-        }
-        return { x, y };
-    };
-
-    if (s.source === "SonSetLink") {
-        const rows = j.rows || [];
-        const tKey = rows[0] && (("timestamp" in rows[0]) ? "timestamp" : (("adjusted_timestamp" in rows[0]) ? "adjusted_timestamp" : null));
-
-        if (!rows.length || !tKey) {
-            detailEl.textContent = titleBase + "\n\nNo rows or unrecognized shape.";
-            return;
-        }
-
-        const x = rows.map(r => new Date(r[tKey]));
-
-        if ("flow1" in rows[0]) {
-            addChart("chart_flow1", { x, y: rows.map(r => Number(r.flow1)), mode: "lines", name: "Total Flow" }, "Total Accumulated Flow");
-
-            // Derive Rate from flow1
-            // standardize points for helper
-            const pts = rows.map(r => ({
-                ts: new Date(r[tKey]).getTime(),
-                val: Number(r.flow1) // "flow1" is raw count/volume? User says "flow_total" in other places. 
-                // Assuming flow1 IS the cumulative counter. 
-                // Note: SonSetLink typically sends `flow_total`. Let's check `flow_total` vs `flow1`.
-                // Server `sslSeries` relies on whatever the endpoint returns. 
-                // Let's stick to flow1 as implemented before, but verify scaling.
-                // If flow1 is already Liters, then 1 unit = 1 L. 
-                // Attempt to treat it as pulses with our factor.
-            }));
-            // Actually, for SSL, `flow1` is often already processed. But let's try the derivation.
-            // Wait, looking at server.js line 139: `flow_total: Number(r.flow_total)`.
-            // In `sslSeries` (server.js around 160), it returns raw JSON.
-            // Previous code used `rows.map(r => Number(r.flow1))`.
-
-            const derived = deriveFlowRate(pts);
-            if (derived.x.length) {
-                addChart("chart_flow_rate", { x: derived.x, y: derived.y, type: "bar", name: "Calc Flow Rate" }, `Calculated Flow Rate (m3/h) @ ${LITERS_PER_PULSE}L/p`);
-            }
-        }
-        if ("deflow" in rows[0]) {
-            addChart("chart_deflow", { x, y: rows.map(r => Number(r.deflow)), mode: "lines", name: "Daily Flow" }, "Daily Flow");
-        }
-
-        detailEl.textContent = `${titleBase}\nRange: ${j.start_utc} → ${j.end_utc}\nRows: ${rows.length}`;
-        setupCSVExport(s, rows, "SonSetLink");
-        return;
+    if (s.source === "DCP") {
+        const { dcpToken } = getKeys();
+        const headers = { "X-API-Key": dcpToken, "Accept": "application/json" };
+        rows = await dcpSeries(headers, s.site_id, start.toISOString(), end.toISOString());
+    } else if (s.source === "SonSetLink") {
+        // Need to format dates as YYYY-MM-DD HH:MM:SS
+        const fmt = (d) => d.toISOString().replace("T", " ").slice(0, 19);
+        const res = await sslSeries(s.site_id, s.serial, fmt(start), fmt(end));
+        rows = res.rows;
     }
 
-    if (s.source === "VRM") {
-        const rows = j.rows || [];
-        if (!rows.length) {
-            detailEl.textContent = titleBase + "\n\nNo rows in range.";
-            return;
-        }
+    if (!rows.length) { detailEl.textContent = "No data found."; return; }
 
-        const by = new Map();
+    detailEl.textContent = `Loaded ${rows.length} points.`;
+    renderCharts(s, rows, s.source);
+}
+
+function renderCharts(site, rows, source) {
+    const chartContainer = el("chart");
+
+    if (source === "SonSetLink") {
+        const tKey = rows[0].timestamp ? "timestamp" : "adjusted_timestamp";
+        const x = rows.map(r => new Date(r[tKey] || r.timestamp));
+        const div = document.createElement("div");
+        div.id = "c_ssl"; div.style.height = "350px"; div.style.marginBottom = "20px";
+        chartContainer.appendChild(div);
+        const traces = [];
+        if (rows[0].flow1) traces.push({ x, y: rows.map(r => Number(r.flow1)), mode: "lines", name: "Total Flow", line: { color: "#2563eb" } });
+        if (rows[0].deflow) traces.push({ x, y: rows.map(r => Number(r.deflow)), mode: "lines", name: "Daily Flow", line: { color: "#16a34a" } });
+        if (traces.length) Plotly.newPlot("c_ssl", traces, { title: `${site.site_name} – Flow`, margin: { t: 50, b: 40, l: 60, r: 20 }, hovermode: "x unified" });
+
+    } else if (source === "DCP") {
+        // Group by code
+        const byCode = {};
         for (const r of rows) {
-            const c = r.code || "UNKNOWN";
-            if (!by.has(c)) by.set(c, []);
-            by.get(c).push(r);
+            if (!byCode[r.code]) byCode[r.code] = [];
+            byCode[r.code].push(r);
         }
 
-        const sortedCodes = [...by.entries()].sort((a, b) => b[1].length - a[1].length); // Most data first
+        const flowPts = (byCode["flow"] || []).sort((a, b) => a.timestamp_ms - b.timestamp_ms);
+        const wlPts = (byCode["water_level_above_pump"] || []).sort((a, b) => a.timestamp_ms - b.timestamp_ms);
 
-        for (const [code, arr] of sortedCodes) {
-            const sortedArr = arr.sort((a, b) => a.timestamp_ms - b.timestamp_ms);
-            const x = sortedArr.map(p => new Date(p.timestamp_ms));
-            const y = sortedArr.map(p => p.value);
+        // Single dual-axis chart
+        const div = document.createElement("div");
+        div.id = "c_dcp"; div.style.height = "400px"; div.style.marginBottom = "20px";
+        chartContainer.appendChild(div);
 
-            // Dictionary for better chart titles
-            const CODE_MAP = {
-                "PVP": "Solar Power (W)",
-                "BV": "Battery Voltage (V)",
-                "SOC": "State of Charge (%)",
-                "TL": "Tank Level (%)",
-                "tl": "Tank Level (%)",
-                "TR": "Tank Volume (m3)",
-                "tr": "Tank Volume (m3)",
-                "MC": "Pulse Count (cum)",
-                "mc": "Pulse Count (cum)",
-                "MA": "Pulse Agg (cum)",
-                "ma": "Pulse Agg (cum)",
-                "YT": "Yield Today (kWh)"
-            };
-
-            const friendlyName = CODE_MAP[code] || CODE_MAP[code.toUpperCase()] || code;
-
-            addChart(`chart_${code.replace(/[^a-zA-Z0-9]/g, "")}`, {
-                x, y, mode: "lines", name: friendlyName
-            }, `VRM: ${friendlyName}`);
-
-            // If Code is MC (Pulse Count) or MA (Pulse Agg), derive rate
-            // MC is typically the cumulative counter on Victron digital inputs configured for flow
-            // If Code is MC (Pulse Count) or MA (Pulse Agg), derive rate
-            // Also check for "FLW" or "FLOW" or "VOLUME" just in case
-            const cUpper = code.toUpperCase();
-            if (cUpper === "MC" || cUpper === "MA" || cUpper.includes("FLOW") || cUpper.includes("FLW")) {
-                const derived = deriveFlowRate(sortedArr);
-                if (derived.x.length) {
-                    addChart(`chart_${code}_rate`, { x: derived.x, y: derived.y, type: "bar", name: "Flow Rate" }, `Derived Flow Rate (m3/h) from ${code}`);
-                }
-            }
+        const traces = [];
+        if (flowPts.length) {
+            traces.push({
+                x: flowPts.map(p => new Date(p.timestamp_ms)),
+                y: flowPts.map(p => p.value),
+                name: "Aggregated Flow (m³/h)",
+                type: "bar",
+                yaxis: "y1",
+                marker: { color: "#2563eb", opacity: 0.7 }
+            });
+        }
+        if (wlPts.length) {
+            traces.push({
+                x: wlPts.map(p => new Date(p.timestamp_ms)),
+                y: wlPts.map(p => p.value),
+                name: "Water Level Above Pump (m)",
+                mode: "lines",
+                yaxis: "y2",
+                line: { color: "#f59e0b", width: 2 }
+            });
         }
 
-        detailEl.textContent = `${titleBase}\nRange: ${j.start_utc} → ${j.end_utc}\nRows: ${rows.length}`;
+        const layout = {
+            title: `${site.site_name} – Flow & Water Level`,
+            hovermode: "x unified",
+            margin: { t: 55, b: 45, l: 65, r: 75 },
+            legend: { orientation: "h", y: 1.12 },
+            yaxis: { title: "Flow (m³/h)", side: "left", showgrid: true },
+            yaxis2: { title: "Water Level (m)", side: "right", overlaying: "y", showgrid: false }
+        };
 
-        // Setup CSV Export
-        setupCSVExport(s, rows, "VRM");
+        Plotly.newPlot("c_dcp", traces, layout);
     }
 }
 
 function setupCSVExport(site, rows, type) {
-    const btn = el("btnExportCSV");
-    btn.style.display = "inline-block";
-    btn.onclick = () => {
-        let csv = "";
-        let filename = `site_${site.site_id}_${type}_export.csv`;
-
-        if (type === "SonSetLink") {
-            // Headers
-            const keys = Object.keys(rows[0]);
-            csv = keys.join(",") + "\n";
-            csv += rows.map(r => keys.map(k => r[k]).join(",")).join("\n");
+    // Re-impl simple CSV dump
+    const btn = el("loadSeries"); // Hack: Just overwrite functionality or append? 
+    // Plan: keep it simple. Allow user to click "Export CSV" button (add if missing)
+    let btnExp = document.getElementById("btnExportCSV");
+    if (!btnExp) {
+        btnExp = document.createElement("button");
+        btnExp.id = "btnExportCSV";
+        btnExp.textContent = "Download CSV";
+        el("siteSelect").parentElement.appendChild(btnExp);
+    }
+    btnExp.onclick = () => {
+        let csv = "Timestamp,Code,Value\n";
+        if (type === "DCP") {
+            csv += rows.map(r => `${new Date(r.timestamp_ms).toISOString()},${r.code},${r.value}`).join("\n");
         } else {
-            // VRM: timestamps common? they are sparse. We list all rows formatted: Timestamp, Code, Value
-            csv = "Timestamp,Timestamp_ISO,Code,Value\n";
-            csv += rows.map(r => {
-                const d = new Date(r.timestamp_ms);
-                return `${r.timestamp_ms},"${d.toISOString()}",${r.code},${r.value}`;
-            }).join("\n");
+            const keys = Object.keys(rows[0]);
+            csv = keys.join(",") + "\n" + rows.map(r => keys.map(k => r[k]).join(",")).join("\n");
         }
-
-        const blob = new Blob([csv], { type: "text/csv" });
-        const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = url;
-        a.download = filename;
-        document.body.appendChild(a);
+        a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+        a.download = `site_${site.site_id}.csv`;
         a.click();
-        document.body.removeChild(a);
     };
 }
 
-// Table Logic
-function setViewMode(mode) {
-    if (mode === "map") {
-        el("map").style.display = "block";
-        el("tableView").style.display = "none";
-        el("btnViewMap").classList.add("active");
-        el("btnViewTable").classList.remove("active");
-        if (map) map.invalidateSize();
-    } else {
-        el("map").style.display = "none";
-        el("tableView").style.display = "block";
-        el("btnViewMap").classList.remove("active");
-        el("btnViewTable").classList.add("active");
-        renderTable();
+
+// COPY PASTE OLD TABLE LOGIC FOR RENDER TABLE ...
+
+async function fetchSeriesForSite(s, days) {
+    // Use midnight UTC boundaries (same as Python script) to ensure consistent day coverage
+    const endDay = new Date();
+    endDay.setUTCHours(0, 0, 0, 0);
+    const end = new Date(endDay.getTime() + 24 * 3600 * 1000); // midnight tomorrow (exclusive)
+    const start = new Date(endDay.getTime() - days * 24 * 3600 * 1000); // midnight N days ago
+
+    let rows = [];
+    if (s.source === "DCP") {
+        const { dcpToken } = getKeys();
+        const headers = { "X-API-Key": dcpToken, "Accept": "application/json" };
+        const fmtIso = (d) => d.toISOString().replace('.000Z', 'Z');
+        rows = await dcpSeries(headers, s.site_id, fmtIso(start), fmtIso(end));
+    } else if (s.source === "SonSetLink") {
+        const fmt = (d) => d.toISOString().replace("T", " ").slice(0, 19);
+        const res = await sslSeries(s.site_id, s.serial, fmt(start), fmt(end));
+        rows = res.rows;
     }
+    return rows;
 }
 
-function renderTable() {
-    const tbody = el("sitesTable").querySelector("tbody");
+let allReportRows = [];
+
+async function renderTable() {
+    const days = Number(el("days").value || 7);
+    el("daysLabel").textContent = days;
+    const tbody = el("reportTable").querySelector("tbody");
+    tbody.innerHTML = "<tr><td colspan='6'>Loading data...</td></tr>";
+
+    allReportRows = [];
+
+    const sorted = [...sites].sort((a, b) => (b.site_name || "").localeCompare(a.site_name || ""));
+
+    // Batch process to avoid hitting API limits/browser freezing
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < sorted.length; i += BATCH_SIZE) {
+        const batch = sorted.slice(i, i + BATCH_SIZE);
+        logStatus(`Fetching data... ${i + batch.length} / ${sorted.length}`);
+
+        await Promise.all(batch.map(async (s) => {
+            const points = await fetchSeriesForSite(s, days);
+
+            let totalFlow = 0;
+            let sparkData = [];
+
+            if (s.source === "DCP") {
+                // filter just flow for sparklines
+                const flowPts = points.filter(p => p.code === "flow").sort((a, b) => a.timestamp_ms - b.timestamp_ms);
+                if (flowPts.length > 0) {
+                    const vals = flowPts.map(p => Number(p.value) || 0);
+                    totalFlow = vals.reduce((acc, val) => acc + val, 0); // periodic flow is aggregated via sum
+                    sparkData = vals;
+                }
+            } else if (s.source === "SonSetLink") {
+                totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
+                sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
+            }
+
+            s.points = points;
+            s.totalFlow = totalFlow;
+            s.sparkData = sparkData;
+            s.status = points.length > 0 ? "OK" : "No Data";
+            console.log(`Site ${s.site_name} (${s.source}): Loaded ${points.length} pts. Flow=${totalFlow}`);
+        }));
+    }
+
+    logStatus(`Done. Loaded ${sites.length} sites.`);
+
+    // Render the table
     tbody.innerHTML = "";
-
-    // Sort by last updated (descending), then name
-    const sorted = [...sites].sort((a, b) => {
-        const ta = a.last_updated || 0;
-        const tb = b.last_updated || 0;
-        return tb - ta || (a.site_name || "").localeCompare(b.site_name || "");
-    });
-
-    const nowSec = Date.now() / 1000;
-
     for (const s of sorted) {
         const tr = document.createElement("tr");
-
-        let ageText = "No Date";
-        let color = "#999";
-
-        if (s.last_updated) {
-            const ageHours = (nowSec - s.last_updated) / 3600;
-            if (ageHours < 24) { ageText = "< 24h"; color = "#00cc00"; }
-            else if (ageHours < 24 * 7) { ageText = `${Math.round(ageHours / 24)}d ago`; color = "#ffcc00"; }
-            else { ageText = "> 7d ago"; color = "#ff4444"; }
-        }
-
-        // Format Stats
-        let statsHtml = "";
-        if (s.source === "SonSetLink" && s.flow_total) {
-            statsHtml += `<b>Flow:</b> ${s.flow_total.toLocaleString()} ${s.flow_unit || ""}`;
-        }
-        if (s.source === "VRM" && s.stats) {
-            const st = s.stats;
-            // Keys are now UpperCase from backend, but keep helper for safety
-            const get = (k) => st[k] || st[k.toUpperCase()];
-
-            const bv = get("BV");
-            const soc = get("SOC");
-            const pvp = get("PVP");
-            const yt = get("YT");
-            const tl = get("TL");
-            const tf = get("TF"); // Tank Fluid
-            const scs = get("SCS"); // Charge State
-            const err = get("SCERR"); // Error
-            const gw = get("GW"); // Gateway
-            const build = get("BUILD");
-            const ma = get("MA"); // Pulse Agg
-            const mc = get("MC"); // Pulse Count
-
-            if (bv) statsHtml += `<b>Batt:</b> ${bv} <br/>`;
-            if (soc) statsHtml += `<b>SoC:</b> ${soc}% <br/>`;
-            if (scs) statsHtml += `<b>Chg State:</b> ${scs} <br/>`;
-            if (pvp) statsHtml += `<b>Solar:</b> ${pvp} <br/>`;
-            if (yt) statsHtml += `<b>Yield:</b> ${yt} <br/>`;
-            if (ma) statsHtml += `<b>Pulse Agg:</b> ${ma} <br/>`;
-            if (mc) statsHtml += `<b>Pulse Cnt:</b> ${mc} <br/>`;
-            if (err && String(err) !== "0" && String(err) !== "No error") statsHtml += `<b style="color:red">Error:</b> ${err} <br/>`;
-            if (tl) statsHtml += `<b>Tank:</b> ${tl} <small>(${tf || ""})</small> <br/>`;
-            if (build) statsHtml += `<b>Status:</b> ${build} <br/>`;
-            if (gw) statsHtml += `<b>GW:</b> ${gw} <br/>`;
-        }
+        const sparkSvg = renderSparkline(s.sparkData);
+        const color = s.status === 'OK' ? 'green' : 'red';
 
         tr.innerHTML = `
-            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${s.site_name || s.site_id}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${s.country || ""}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd;">${s.source}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd; color: ${color}; font-weight: bold;">${ageText}</td>
-            <td style="padding: 8px; border-bottom: 1px solid #ddd; font-size: 0.9em;">${statsHtml}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${s.source}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${s.site_name}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${s.site_id}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${Math.round(s.totalFlow * 100) / 100}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${sparkSvg}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd; color:${color}">${s.status}</td>
         `;
 
         tr.style.cursor = "pointer";
         tr.onclick = () => {
-            // Switch to map to select site
-            setViewMode("map");
-            el("siteSelect").value = keyOf(s);
-            loadSeries();
-            // Highlight marker?
+            // Open details
+            const sel = el("siteSelect");
+            if (sel) sel.value = keyOf(s);
             const m = markersByKey.get(keyOf(s));
-            if (m) {
-                m.openPopup();
-                map.setView(m.getLatLng(), Math.max(map.getZoom(), 12));
-            }
+            if (m) { m.openPopup(); map.setView(m.getLatLng(), 12); }
+            loadSeriesFromCache(s);
         };
 
         tbody.appendChild(tr);
+
+        allReportRows.push({
+            source: s.source,
+            sysId: s.site_id,
+            name: s.site_name,
+            total: s.totalFlow,
+            status: s.status
+        });
     }
 }
 
-async function main() {
-    initMap();
-    await loadConfig();
-    // Add listeners for view mode toggles
-    el("btnViewMap").onclick = () => setViewMode("map");
-    el("btnViewTable").onclick = () => setViewMode("table");
+function loadSeriesFromCache(s) {
+    el("detailSection").style.display = "block";
+    el("detailTitle").textContent = `Details for ${s.site_name}`;
+    const chartContainer = el("chart");
+    chartContainer.innerHTML = "";
 
-    el("btnLast7").onclick = () => {
-        el("days").value = 7;
-        // Trigger reload if a site is currently selected? 
-        // For simplicity, user will click Load Series again or we can re-trigger
-        const sel = el("siteSelect").value;
-        if (sel) {
-            alert("Set to 7 Days. Click 'Load Series' or a site marker to reload.");
-        }
-    };
+    if (!s.points || !s.points.length) {
+        detailEl.textContent = "No data available in this timeframe.";
+        return;
+    }
 
-    el("btnLast2").onclick = () => {
-        el("days").value = 2;
-        const sel = el("siteSelect").value;
-        if (sel) {
-            alert("Set to 2 Days (High Res). Click 'Load Series' or a site marker to reload.");
-        }
-    };
-
-    el("reload").addEventListener("click", async () => {
-        try { await loadSites(); }
-        catch (e) { logStatus(String(e.message || e)); }
-    });
-
-    el("loadSeries").addEventListener("click", async () => {
-        try { await loadSeries(); }
-        catch (e) { detailEl.textContent = String(e.message || e); }
-    });
+    detailEl.textContent = `Rendering ${s.points.length} points...`;
+    renderCharts(s, s.points, s.source);
 }
 
-main().catch(e => logStatus(String(e.message || e)));
+
+function main() {
+    initMap();
+    if (el("btnViewMap")) el("btnViewMap").style.display = 'none';
+    if (el("btnViewTable")) el("btnViewTable").style.display = 'none';
+    el("reload").onclick = loadSites;
+    // Hide old series buttons as they are now global settings
+    if (el("loadSeries")) el("loadSeries").style.display = 'none';
+    if (el("siteSelect")) el("siteSelect").parentElement.style.display = 'none';
+
+    // Wire both CSV export buttons
+    function doExportCSV() {
+        if (!allReportRows || !allReportRows.length) { alert("No data to export."); return; }
+        const days = el("days").value || 7;
+        let csv = `Source,System ID,Site Name,Total Flow (m³)\n`;
+        csv += allReportRows.map(r => `${r.source},"${r.sysId}","${r.name}",${r.total}`).join("\n");
+        const blob = new Blob([csv], { type: "text/csv" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `wash_flow_${days}d.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+    if (el("btnExportCSV")) el("btnExportCSV").onclick = doExportCSV;
+    if (el("btnExportCSV2")) el("btnExportCSV2").onclick = doExportCSV;
+
+    // Auto load if keys exist
+    if (getKeys().dcpToken || getKeys().sslUser) {
+        loadSites();
+    } else {
+        logStatus("Welcome. Click Settings to enter API keys.");
+    }
+}
+
+main();

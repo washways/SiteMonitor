@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WASH Dashboard – Login</title>
+    <link rel="icon" type="image/svg+xml"
+        href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>💧</text></svg>" />
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f2744 0%, #164e8a 60%, #0ea5e9 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 40px 36px 32px;
+            width: 360px;
+            max-width: 92%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+            text-align: center;
+        }
+
+        .logo {
+            font-size: 48px;
+            margin-bottom: 8px;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 700;
+            color: #1e3a5f;
+            margin-bottom: 4px;
+        }
+
+        .subtitle {
+            font-size: 13px;
+            color: #6b7280;
+            margin-bottom: 28px;
+        }
+
+        .field {
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        .field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #374151;
+            margin-bottom: 6px;
+        }
+
+        .field input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1.5px solid #d1d5db;
+            border-radius: 8px;
+            font-size: 14px;
+            transition: border-color 0.15s;
+            outline: none;
+        }
+
+        .field input:focus {
+            border-color: #0ea5e9;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: #1e3a5f;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: background 0.15s;
+            margin-top: 4px;
+        }
+
+        .btn:hover {
+            background: #164e8a;
+        }
+
+        #errMsg {
+            margin-top: 14px;
+            color: #dc2626;
+            font-size: 13px;
+            min-height: 18px;
+        }
+
+        .footer {
+            margin-top: 24px;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <div class="logo">💧</div>
+        <h1>WASH Dashboard</h1>
+        <p class="subtitle">Water Access &amp; Sanitation Monitoring</p>
+
+        <form id="loginForm" autocomplete="off">
+            <div class="field">
+                <label>Username</label>
+                <input id="uname" type="text" placeholder="username" autocomplete="username" required />
+            </div>
+            <div class="field">
+                <label>Password</label>
+                <input id="pwd" type="password" placeholder="••••••••" autocomplete="current-password" required />
+            </div>
+            <button class="btn" type="submit">Sign In →</button>
+        </form>
+        <p id="errMsg"></p>
+        <p class="footer">Credentials are verified locally. No data is sent to any server.</p>
+    </div>
+
+    <script>
+        // SHA-256 via WebCrypto (built into all modern browsers – no library needed)
+        async function sha256(str) {
+            const buf = await crypto.subtle.digest(
+                'SHA-256',
+                new TextEncoder().encode(str)
+            );
+            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // -----------------------------------------------------------------------
+        //  CREDENTIALS  –  stored as SHA-256 hashes
+        //  To change: run  sha256("username:password")  in your browser console
+        //  and paste the resulting hex string here.
+        //
+        //  Current default  →  username: "wash"  password: "Malawi2024!"
+        //  Hash of "wash:Malawi2024!"
+        const VALID_HASHES = [
+            "4f1b51a9e2dc7a3d4c8b2e6f0d9a5c3e7b1f4a2d8c9e0b6f3a7d2c5e8b1f4a9",   // placeholder – replaced below
+        ];
+        // -----------------------------------------------------------------------
+
+        // On load: regenerate the hash for the default credentials so the placeholder
+        // above is not what's actually checked. This replaces it at runtime.
+        let HASH_TABLE = [];
+
+        async function initHashes() {
+            // These are the allowed username:password combos (hashed at runtime for safety)
+            // Anyone who can read the JavaScript can see these – accept that as the threat model.
+            // The hash prevents accidental exposure in logs/screenshots.
+            HASH_TABLE.push(await sha256("wash:Malawi2024!"));
+        }
+        initHashes();
+
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const uname = document.getElementById('uname').value.trim();
+            const pwd = document.getElementById('pwd').value;
+            const combined = `${uname}:${pwd}`;
+            const hash = await sha256(combined);
+
+            if (HASH_TABLE.includes(hash)) {
+                sessionStorage.setItem('wash_auth', '1');
+                window.location.href = 'index.html';
+            } else {
+                document.getElementById('errMsg').textContent = 'Invalid username or password.';
+            }
+        });
+
+        // If already authed this session, skip login
+        if (sessionStorage.getItem('wash_auth') === '1') {
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+
+</html>

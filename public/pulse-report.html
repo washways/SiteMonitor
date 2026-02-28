@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>Pulse Readings Report</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .controls {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        th,
+        td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+
+        th {
+            background: #eee;
+            position: sticky;
+            top: 0;
+        }
+
+        .status-log {
+            background: #333;
+            color: #fff;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            max-height: 150px;
+            overflow-y: auto;
+            display: none;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+            background: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        button.secondary {
+            background: #666;
+        }
+
+        input[type="date"] {
+            padding: 6px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Pulse Readings Daily Report</h1>
+
+    <div class="controls">
+        <label>
+            Start Date:
+            <input type="date" id="startDate">
+        </label>
+        <label>
+            End Date:
+            <input type="date" id="endDate">
+        </label>
+        <button id="btnGenerate">Generate Report</button>
+        <div style="flex-grow: 1;"></div>
+        <button id="btnExport" class="secondary" disabled>Download CSV</button>
+        <a href="index.html" style="margin-left: 10px;">Back to Dashboard</a>
+    </div>
+
+    <div id="statusLog" class="status-log"></div>
+
+    <div id="resultsArea">
+        <table id="reportTable">
+            <thead>
+                <tr>
+                    <th>Source</th>
+                    <th>System ID</th>
+                    <th>Site Name</th>
+                    <th>Date Range</th>
+                    <th>Total Flow</th>
+                    <th>Trend (Sparkline)</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Rows will be added here -->
+            </tbody>
+        </table>
+    </div>
+
+    <script src="report.js"></script>
+</body>
+
+</html>

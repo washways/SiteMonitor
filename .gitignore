@@ -1,3 +1,17 @@
 node_modules/
 .env
+.env.*
 .DS_Store
+*.log
+
+# Test / scratch scripts – not part of the deployable app
+test-*.js
+test_*.cjs
+patch-*.js
+patch-*.cjs
+*.cjs
+
+# Build / server artifacts (not needed for static GitHub Pages deploy)
+server.js
+package.json
+package-lock.json

@@ -1,89 +1,118 @@
 <!doctype html>
-<html>
+<html lang="en">
 
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Unified WASH Dashboard</title>
+  <title>WASH Dashboard</title>
+  <meta name="description" content="Unified WASH water-pump monitoring dashboard for Malawi sites." />
+
+  <!-- Inline SVG favicon – water drop -->
+  <link rel="icon" type="image/svg+xml"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>💧</text></svg>" />
 
   <link rel="stylesheet" href="styles.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+  <!-- Auth gate: redirect to login if not authenticated this session -->
+  <script>
+    if (sessionStorage.getItem('wash_auth') !== '1') {
+      window.location.replace('login.html');
+    }
+  </script>
 </head>
 
 <body>
+  <!-- ===== HEADER ===== -->
   <header>
-    <h1>Unified WASH Dashboard</h1>
+    <h1>💧 WASH Dashboard</h1>
     <div class="controls">
-      <div class="group">
-        <button id="btnViewMap" class="active">Map</button>
-        <button id="btnViewTable">Table</button>
-      </div>
+      <button id="btnSettings" class="btn-icon" title="Settings">⚙️</button>
       <label class="chk">
-        <input id="malawiOnly" type="checkbox" />
+        <input id="malawiOnly" type="checkbox" checked />
         Malawi only
       </label>
-
       <label>
         Days
-        <input id="days" type="number" min="1" max="365" value="30" />
+        <input id="days" type="number" min="1" max="365" value="7" />
       </label>
-
-      <button id="btnLast7" style="padding: 8px;">Last 7 Days</button>
-      <button id="btnLast2" style="padding: 8px;">Last 2 Days (High Res)</button>
-
-      <button id="reload">Load sites</button>
+      <button id="reload" class="btn-primary">▶ Load</button>
+      <button id="btnExportCSV" class="btn-csv" title="Download summarised CSV">⬇ CSV</button>
     </div>
   </header>
 
+  <!-- ===== SETTINGS MODAL ===== -->
+  <div id="settingsModal" class="modal" style="display:none;">
+    <div class="modal-content">
+      <span id="closeSettings" class="close">&times;</span>
+      <h2>API Settings</h2>
+      <p><small>Stored locally in your browser.</small></p>
+
+      <div class="field">
+        <label>DCP API Key</label>
+        <input type="password" id="dcpToken" placeholder="dcp…" />
+      </div>
+
+      <hr />
+
+      <div class="field">
+        <label>SonSetLink User</label>
+        <input type="text" id="sslUser" />
+      </div>
+      <div class="field">
+        <label>SonSetLink Password</label>
+        <input type="password" id="sslPass" />
+      </div>
+
+      <div style="margin-top:20px; text-align:right;">
+        <button id="saveSettings" class="btn-primary">Save &amp; Reload</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== STATUS BAR ===== -->
+  <div id="statusBar"><span id="status">Ready.</span></div>
+
+  <!-- ===== MAIN CONTENT ===== -->
   <main>
-    <section class="left">
+
+    <!-- Flow Report Table -->
+    <section class="panel panel-table">
+      <div class="panel-head">
+        <h2>Flow Report (<span id="daysLabel">7</span> Days)</h2>
+        <button id="btnExportCSV2" class="btn-csv" title="Download summarised CSV">⬇ CSV</button>
+      </div>
+      <div class="table-scroll">
+        <table id="reportTable">
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Site Name</th>
+              <th>ID</th>
+              <th>Total Flow (m³)</th>
+              <th>Trend</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Map -->
+    <section class="panel panel-map">
       <div id="map"></div>
-      <div id="tableView" style="display:none; padding: 20px;">
-        <table id="sitesTable" style="width:100%; border-collapse: collapse;">
-          <thead>
-            <tr style="background: #eee; text-align: left;">
-              <th style="padding: 8px;">Site Name</th>
-              <th style="padding: 8px;">Country</th>
-              <th style="padding: 8px;">Source</th>
-              <th style="padding: 8px;">Last Updated</th>
-              <th style="padding: 8px;">Latest Stats</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-      <div id="tableView" style="display:none; padding: 20px;">
-        <table id="sitesTable" style="width:100%; border-collapse: collapse;">
-          <thead>
-            <tr style="background: #eee; text-align: left;">
-              <th style="padding: 8px;">Site Name</th>
-              <th style="padding: 8px;">Country</th>
-              <th style="padding: 8px;">Source</th>
-              <th style="padding: 8px;">Last Updated</th>
-              <th style="padding: 8px;">Latest Stats</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-
-      <div class="sitebar">
-        <select id="siteSelect">
-          <option value="">Select a site…</option>
-        </select>
-        <button id="loadSeries">Load series</button>
-      </div>
-
-      <pre id="status"></pre>
     </section>
 
-    <section class="right">
+    <!-- Detail Chart (shown on row/marker click) -->
+    <section id="detailSection" class="panel panel-chart" style="display:none;">
+      <h2 id="detailTitle">Site Details</h2>
       <div id="chart"></div>
-      <pre id="detail"></pre>
+      <pre id="detail" style="display:none;"></pre>
     </section>
+
   </main>
 
   <script src="app.js"></script>
