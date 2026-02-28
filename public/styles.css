@@ -94,6 +94,22 @@ button:hover {
   color: #fff;
 }
 
+.btn-doc {
+  padding: 6px 12px;
+  background: #4b5563;
+  color: #fff;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+  transition: opacity 0.15s;
+}
+
+.btn-doc:hover {
+  opacity: 0.85;
+}
+
 /* ===========================
    STATUS BAR
    =========================== */
