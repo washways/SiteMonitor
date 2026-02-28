@@ -92,21 +92,13 @@ Credentials are saved only in your browser's `localStorage`. They are **never** 
 
 ### 2. Login credentials (dashboard access)
 
-Default credentials for the login gate:
+Credentials are distributed privately to authorised users. To change the login password, open `public/login.html` and update the entry inside `initHashes()`:
 
-| Username | Password |
-|----------|----------|
-| `wash` | `Malawi2024!` |
+```js
+HASH_TABLE.push(await sha256("newusername:newpassword"));
+```
 
-Share these verbally with anyone who needs access. To change them:
-
-1. Open `public/login.html`
-2. Find the line:
-   ```js
-   HASH_TABLE.push(await sha256("wash:Malawi2024!"));
-   ```
-3. Replace `wash` and `Malawi2024!` with your preferred username and password
-4. Commit and push
+Commit and push after changing.
 
 The password is checked client-side using the browser's native **WebCrypto SHA-256** — never stored in plain text.
 
