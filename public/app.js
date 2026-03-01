@@ -1,5 +1,17 @@
 // ====================== CONFIG & STATE ======================
-const DCP_BASE = "https://api-dev.dcp.solar/water";
+
+// ---- CORS Proxy ----
+// When running on the live site, API calls are routed through a
+// Cloudflare Worker to avoid CORS blocks. Update this URL after
+// deploying the worker (see cloudflare-worker/worker.js).
+const PROXY_BASE = "https://wash-proxy.washways1.workers.dev";  // ← UPDATE THIS
+
+const IS_LIVE = !location.hostname.match(/^(localhost|127\.0\.0\.1)$/);
+
+// Base URLs: proxied on live site, direct on localhost
+const DCP_BASE = IS_LIVE ? `${PROXY_BASE}/dcp` : "https://api-dev.dcp.solar/water";
+const SSL_BASE = IS_LIVE ? `${PROXY_BASE}/ssl` : "https://sonsetlink.org/water/technical";
+
 // Malawi bbox filter
 const MALAWI_BBOX = { latMin: -17.2, latMax: -9.2, lonMin: 32.5, lonMax: 36.1 };
 
@@ -100,10 +112,9 @@ async function fetchJson(url, options = {}, silent = false) {
 async function sslSites() {
     // Note: This URL might fail CORS.
     const { sslUser, sslPass } = getKeys();
-    const base = "https://sonsetlink.org/water/technical";
     if (!sslUser || !sslPass) return [];
 
-    const url = new URL(`${base}/sites.json.php`);
+    const url = new URL(`${SSL_BASE}/sites.json.php`);
     url.searchParams.set("login", sslUser);
     url.searchParams.set("password", sslPass);
 
@@ -138,11 +149,10 @@ async function sslSites() {
 
 async function sslSeries(siteId, serial, startUtc, endUtc) {
     const { sslUser, sslPass } = getKeys();
-    const base = "https://sonsetlink.org/water/technical";
     const endpoints = ["usage.json.php", "usage1_msg.json.php", "usage8_msg.json.php", "usage12_msg.json.php"]; // usage1 is most common
 
     for (const ep of endpoints) {
-        const url = new URL(`${base}/${ep}`);
+        const url = new URL(`${SSL_BASE}/${ep}`);
         url.searchParams.set("login", sslUser);
         url.searchParams.set("password", sslPass);
         url.searchParams.set("site", siteId);
