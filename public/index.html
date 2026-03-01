@@ -2,140 +2,214 @@
 <html lang="en">
 
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>WASH Dashboard</title>
-  <meta name="description"
-    content="Monitor solar-powered and hand pump waterpoints across Malawi. Track flow data, view live maps and download reports." />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WASH Dashboard</title>
 
-  <!-- Open Graph / WhatsApp / Facebook -->
-  <meta property="og:type" content="website" />
-  <meta property="og:url" content="https://washways.org/SiteMonitor" />
-  <meta property="og:title" content="💧 WaterPoint Dashboard � Solar & Pump Site Monitoring" />
-  <meta property="og:description"
-    content="Monitor solar-powered and hand pump waterpoints across Malawi. Track flow data, view live maps and download reports." />
-  <meta property="og:image" content="https://washways.org/SiteMonitor/social-preview.png" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
+    <!-- Open Graph / Social Preview -->
+    <meta property="og:title" content="WASH Dashboard - Water Access & Sanitation Monitoring" />
+    <meta property="og:description"
+        content="Monitor solar-powered and hand pump waterpoints across Malawi. Track flow data, view live maps and download reports." />
+    <meta property="og:image" content="https://washways.org/SiteMonitor/social-preview.png" />
+    <meta property="og:url" content="https://washways.org/SiteMonitor/" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
 
-  <!-- Twitter / X Card -->
-  <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="💧 WaterPoint Dashboard � Solar & Pump Site Monitoring" />
-  <meta name="twitter:description" content="Monitor solar-powered and hand pump waterpoints. Track flow, pump status and site maps." />
-  <meta name="twitter:image" content="https://washways.org/SiteMonitor/social-preview.png" />
-  <meta name="description" content="Unified WASH water-pump monitoring dashboard for Malawi sites." />
-
-  <!-- Inline SVG favicon – water drop -->
-  <link rel="icon" type="image/svg+xml"
-    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='28' font-size='28'>💧</text></svg>" />
-
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
-  <!-- Auth gate: redirect to login if not authenticated this session -->
-  <script>
-    if (sessionStorage.getItem('wash_auth') !== '1') {
-      window.location.replace('login.html');
-    }
-  </script>
+    <link rel="icon" href="favicon.ico" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="styles.css" />
 </head>
 
 <body>
-  <!-- ===== HEADER ===== -->
-  <header>
-    <h1>💧 WASH Dashboard</h1>
-    <div class="controls">
-      <button id="btnSettings" class="btn-icon" title="Settings">⚙️</button>
-      <a href="https://github.com/washways/SiteMonitor#readme" target="_blank" rel="noopener" class="btn-doc"
-        title="Documentation">📖 Docs</a>
-      <label class="chk">
-        <input id="malawiOnly" type="checkbox" checked />
-        Malawi only
-      </label>
-      <label>
-        Days
-        <input id="days" type="number" min="1" max="365" value="7" />
-      </label>
-      <button id="reload" class="btn-primary">▶ Load</button>
-      <button id="btnExportCSV" class="btn-csv" title="Download summarised CSV">⬇ CSV</button>
+
+    <!-- ===== SPLASH / WELCOME SCREEN ===== -->
+    <div id="splashOverlay" class="splash-overlay" style="display:none;">
+        <div class="splash-card">
+            <div class="splash-icon">
+                <svg width="64" height="64" viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="20" cy="20" r="20" fill="#1e3a5f" />
+                    <text x="20" y="28" text-anchor="middle" fill="#fff" font-size="22">&#x1F4A7;</text>
+                </svg>
+            </div>
+            <h2 class="splash-title">Welcome to the WASH Dashboard</h2>
+            <p class="splash-subtitle">Water Access &amp; Sanitation Monitoring</p>
+
+            <div class="splash-body">
+                <p>This dashboard provides <strong>real-time monitoring</strong> of solar-powered and hand-pump
+                    waterpoints across Malawi.</p>
+
+                <div class="splash-features">
+                    <div class="splash-feature-item">
+                        <span class="splash-feature-icon">&#x1F4CA;</span>
+                        <div>
+                            <strong>Flow Reports</strong>
+                            <span>Track water flow totals, trends, and site status over configurable time periods</span>
+                        </div>
+                    </div>
+                    <div class="splash-feature-item">
+                        <span class="splash-feature-icon">&#x1F5FA;</span>
+                        <div>
+                            <strong>Interactive Map</strong>
+                            <span>Visualise all waterpoints on a live map with colour-coded freshness indicators</span>
+                        </div>
+                    </div>
+                    <div class="splash-feature-item">
+                        <span class="splash-feature-icon">&#x1F4C8;</span>
+                        <div>
+                            <strong>Site Detail Charts</strong>
+                            <span>Dual-axis charts showing flow rates and water levels for each pump</span>
+                        </div>
+                    </div>
+                    <div class="splash-feature-item">
+                        <span class="splash-feature-icon">&#x2699;&#xFE0F;</span>
+                        <div>
+                            <strong>Two Data Sources</strong>
+                            <span>Combines DCP Water API and SonSetLink API into a single unified view</span>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="splash-hint">Click <strong>&#x2699; Settings</strong> in the header to enter your API
+                    credentials and start loading data.</p>
+            </div>
+
+            <label class="splash-dismiss-label">
+                <input type="checkbox" id="splashDismissCheck" />
+                Don't show this again
+            </label>
+
+            <button id="splashClose" class="btn-primary splash-btn">Enter Dashboard</button>
+        </div>
     </div>
-  </header>
 
-  <!-- ===== SETTINGS MODAL ===== -->
-  <div id="settingsModal" class="modal" style="display:none;">
-    <div class="modal-content">
-      <span id="closeSettings" class="close">&times;</span>
-      <h2>API Settings</h2>
-      <p><small>Stored locally in your browser.</small></p>
+    <!-- ===== HEADER ===== -->
+    <header>
+        <h1>
+            <svg width="22" height="22" viewBox="0 0 40 40" style="vertical-align:middle"
+                xmlns="http://www.w3.org/2000/svg">
+                <circle cx="20" cy="20" r="20" fill="#2563eb" />
+                <text x="20" y="28" text-anchor="middle" fill="#fff" font-size="22">&#x1F4A7;</text>
+            </svg>
+            WASH Dashboard
+        </h1>
+        <div class="controls">
+            <label>Days <input id="days" type="number" min="1" max="365" value="7" /></label>
+            <button id="reload" class="btn-primary">&#x25B6; Load</button>
+            <label><input id="malawiOnly" type="checkbox" checked /> Malawi only</label>
+            <button id="btnExportCSV" class="btn-csv" title="Download summary CSV">&#x2B07; CSV</button>
+            <a href="https://github.com/washways/SiteMonitor#readme" target="_blank" class="btn-doc">&#x1F4D6; Docs</a>
+            <button id="btnSettings" class="btn-icon" title="API Settings">&#x2699;</button>
+        </div>
+    </header>
 
-      <div class="field">
-        <label>DCP API Key</label>
-        <input type="password" id="dcpToken" placeholder="dcp…" />
-      </div>
+    <!-- ===== STATUS BAR ===== -->
+    <div id="statusBar"><span id="status">Ready.</span></div>
 
-      <hr />
+    <main>
+        <!-- ===== TABLE ===== -->
+        <section class="panel panel-table">
+            <div class="panel-head">
+                <h2>Flow Report (<span id="daysLabel">7</span> Days)</h2>
+                <button id="btnExportCSV2" class="btn-csv" title="Download summary CSV" style="display:none;">&#x2B07;
+                    CSV</button>
+            </div>
+            <div class="table-scroll">
+                <table id="reportTable">
+                    <thead>
+                        <tr>
+                            <th>Source</th>
+                            <th>Site Name</th>
+                            <th>ID</th>
+                            <th>Total Flow (m&#xB3;)</th>
+                            <th>Trend</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </section>
 
-      <div class="field">
-        <label>SonSetLink User</label>
-        <input type="text" id="sslUser" />
-      </div>
-      <div class="field">
-        <label>SonSetLink Password</label>
-        <input type="password" id="sslPass" />
-      </div>
+        <!-- ===== MAP ===== -->
+        <section class="panel panel-map">
+            <div id="map"></div>
+        </section>
 
-      <div style="margin-top:20px; text-align:right;">
-        <button id="saveSettings" class="btn-primary">Save &amp; Reload</button>
-      </div>
+        <!-- ===== DETAIL CHART ===== -->
+        <section id="detailSection" class="panel panel-chart" style="display:none;">
+            <h2 id="detailTitle">Site Details</h2>
+            <div id="chart"></div>
+            <pre id="detail" style="display:none;"></pre>
+        </section>
+
+        <!-- ===== SETTINGS MODAL ===== -->
+        <div id="settingsModal" class="modal" style="display:none;">
+            <div class="modal-content">
+                <span id="closeSettings" class="close">&times;</span>
+                <h2>API Settings</h2>
+                <p><small>Stored locally in your browser.</small></p>
+                <hr>
+                <div class="field">
+                    <label>DCP API Key</label>
+                    <input id="dcpToken" placeholder="dcp..." />
+                </div>
+                <div class="field">
+                    <label>SonSetLink User</label>
+                    <input id="sslUser" />
+                </div>
+                <div class="field">
+                    <label>SonSetLink Password</label>
+                    <input type="password" id="sslPass" />
+                </div>
+                <hr>
+                <button id="saveSettings" class="btn-primary">Save &amp; Reload</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- ===== SITE SELECT (hidden, used by app.js) ===== -->
+    <div style="display:none;">
+        <select id="siteSelect"></select>
+        <button id="loadSeries">Load Series</button>
+        <button id="btnViewMap" style="display:none;">Map</button>
+        <button id="btnViewTable" style="display:none;">Table</button>
     </div>
-  </div>
 
-  <!-- ===== STATUS BAR ===== -->
-  <div id="statusBar"><span id="status">Ready.</span></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
 
-  <!-- ===== MAIN CONTENT ===== -->
-  <main>
+    <!-- ===== SPLASH SCREEN LOGIC ===== -->
+    <script>
+        (function () {
+            var overlay = document.getElementById('splashOverlay');
+            var closeBtn = document.getElementById('splashClose');
+            var checkbox = document.getElementById('splashDismissCheck');
 
-    <!-- Flow Report Table -->
-    <section class="panel panel-table">
-      <div class="panel-head">
-        <h2>Flow Report (<span id="daysLabel">7</span> Days)</h2>
-        <button id="btnExportCSV2" class="btn-csv" title="Download summarised CSV">⬇ CSV</button>
-      </div>
-      <div class="table-scroll">
-        <table id="reportTable">
-          <thead>
-            <tr>
-              <th>Source</th>
-              <th>Site Name</th>
-              <th>ID</th>
-              <th>Total Flow (m³)</th>
-              <th>Trend</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody></tbody>
-        </table>
-      </div>
-    </section>
+            // Show splash unless user has opted out
+            if (localStorage.getItem('wash_splash_dismissed') !== '1') {
+                overlay.style.display = 'flex';
+            }
 
-    <!-- Map -->
-    <section class="panel panel-map">
-      <div id="map"></div>
-    </section>
+            closeBtn.addEventListener('click', function () {
+                if (checkbox.checked) {
+                    localStorage.setItem('wash_splash_dismissed', '1');
+                }
+                overlay.style.display = 'none';
+            });
 
-    <!-- Detail Chart (shown on row/marker click) -->
-    <section id="detailSection" class="panel panel-chart" style="display:none;">
-      <h2 id="detailTitle">Site Details</h2>
-      <div id="chart"></div>
-      <pre id="detail" style="display:none;"></pre>
-    </section>
+            // Also close on clicking the overlay background
+            overlay.addEventListener('click', function (e) {
+                if (e.target === overlay) {
+                    if (checkbox.checked) {
+                        localStorage.setItem('wash_splash_dismissed', '1');
+                    }
+                    overlay.style.display = 'none';
+                }
+            });
+        })();
+    </script>
 
-  </main>
-
-  <script src="app.js"></script>
+    <script src="app.js"></script>
 </body>
 
 </html>

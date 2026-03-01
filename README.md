@@ -1,10 +1,10 @@
 # 💧 WASH Dashboard — Water Access & Sanitation Monitoring
 
-A **static, browser-based dashboard** for monitoring UNICEF WASH water-pump sites across Malawi. No server required; built for deployment on GitHub Pages.
+A **static, browser-based dashboard** for monitoring solar-powered and hand-pump waterpoints across Malawi. Deployed on GitHub Pages with a Cloudflare Worker CORS proxy for live API access.
 
 [![Deploy to GitHub Pages](https://github.com/washways/SiteMonitor/actions/workflows/deploy.yml/badge.svg)](https://github.com/washways/SiteMonitor/actions/workflows/deploy.yml)
 
-**Live Site →** [washways.org/SiteMonitor/login.html](https://washways.org/SiteMonitor/login.html)
+**Live Site →** [washways.org/SiteMonitor](https://washways.org/SiteMonitor/login.html)
 
 ---
 
@@ -19,7 +19,8 @@ A **static, browser-based dashboard** for monitoring UNICEF WASH water-pump site
 | **Malawi filter** | One-click toggle to show only sites within the Malawi bounding box |
 | **CSV Export** | Download summarised flow data for the selected period with one click |
 | **Login gate** | SHA-256 client-side password check; no credentials sent to any server |
-| **Fully static** | No Node.js, no backend; runs entirely in the browser and deploys to GitHub Pages |
+| **CORS Proxy** | Cloudflare Worker routes API calls to avoid browser CORS restrictions |
+| **Fully static** | No backend required; runs entirely in the browser on GitHub Pages |
 | **Responsive** | Usable on desktop and phone |
 
 ---
@@ -28,23 +29,38 @@ A **static, browser-based dashboard** for monitoring UNICEF WASH water-pump site
 
 ```
 wash-dashboard/
-├── public/                   ← deployed to GitHub Pages
-│   ├── login.html            ← login gate (SHA-256 password check)
-│   ├── index.html            ← main dashboard
-│   ├── app.js                ← all frontend logic
-│   └── styles.css            ← styling & responsive layout
+├── public/                        ← deployed to GitHub Pages
+│   ├── login.html                 ← login gate (SHA-256 password check)
+│   ├── index.html                 ← main dashboard
+│   ├── app.js                     ← all frontend logic
+│   ├── report.js                  ← pulse-report logic
+│   ├── pulse-report.html          ← pulse report page
+│   └── styles.css                 ← styling & responsive layout
+├── cloudflare-worker/
+│   └── worker.js                  ← CORS proxy (deployed to Cloudflare Workers)
 ├── .github/workflows/
-│   └── deploy.yml            ← GitHub Actions auto-deploy on push to main
-├── .gitignore                ← excludes .env, server.js, test scripts
+│   └── deploy.yml                 ← GitHub Actions auto-deploy on push to main
+├── .gitignore                     ← excludes .env, server.js, test scripts
+├── server.js                      ← local dev server with built-in proxy (optional)
+├── start_dashboard.bat            ← local dev launcher (Windows)
 └── README.md
 ```
 
-**Data flow:**
+### Data Flow
+
+**Live site (GitHub Pages):**
 ```
-Browser → DCP Water API  (https://api-dev.dcp.solar/water)
-       → SonSetLink API  (https://sonsetlink.org/water/technical)
+Browser  →  Cloudflare Worker (wash-proxy.washways1.workers.dev)
+                ├── /dcp/*  →  api-dev.dcp.solar/water/*
+                └── /ssl/*  →  sonsetlink.org/water/technical/*
 ```
-All API requests are made directly from the browser. Credentials are stored in `localStorage` per device and never committed to the repository.
+
+**Local development:**
+```
+Browser  →  Direct API calls (using Chrome with CORS disabled via start_dashboard.bat)
+```
+
+The Cloudflare Worker acts as a transparent CORS proxy — it forwards API requests server-side (where CORS doesn't apply), then returns responses with proper `Access-Control-Allow-Origin` headers.
 
 ---
 
@@ -70,19 +86,19 @@ All API requests are made directly from the browser. Credentials are stored in `
 | `GET /usage.json.php` | Daily flow totals (`deflow`) and cumulative meter (`flow1`) |
 
 - Authentication: `login` + `password` query parameters
-- The dashboard cycles through `/usage.json.php`, `/usage1_msg.json.php`, `/usage8_msg.json.php`, `/usage12_msg.json.php` to find which table a given device stores data in (some return 404 — this is expected and silenced)
+- The dashboard cycles through multiple endpoint variants (`usage.json.php`, `usage1_msg.json.php`, `usage8_msg.json.php`, `usage12_msg.json.php`) to find which table a given device stores data in (some return 404 — this is expected and silenced)
 
 ---
 
-## Setting Up
+## Getting Started
 
 ### 1. First-time access — enter your API credentials
 
-1. Open the dashboard and sign in (default credentials below)
+1. Open the dashboard and sign in (credentials are shared privately with authorised users)
 2. Click **⚙️ Settings** in the header
 3. Enter:
    - **DCP API Key** — your key from `api-dev.dcp.solar`
-   - **SonSetLink User** — e.g. `unicef`
+   - **SonSetLink User** — your SonSetLink username
    - **SonSetLink Password** — your SonSetLink password
 4. Click **Save & Reload**
 
@@ -90,17 +106,15 @@ Credentials are saved only in your browser's `localStorage`. They are **never** 
 
 ---
 
-### 2. Login credentials (dashboard access)
+### 2. Changing the login password
 
-Credentials are distributed privately to authorised users. To change the login password, open `public/login.html` and update the entry inside `initHashes()`:
+To change the dashboard login password, open `public/login.html` and update the entry inside `initHashes()`:
 
 ```js
 HASH_TABLE.push(await sha256("newusername:newpassword"));
 ```
 
-Commit and push after changing.
-
-The password is checked client-side using the browser's native **WebCrypto SHA-256** — never stored in plain text.
+Commit and push after changing. The password is checked client-side using the browser's native **WebCrypto SHA-256** — never stored in plain text.
 
 ---
 
@@ -138,12 +152,27 @@ The password is checked client-side using the browser's native **WebCrypto SHA-2
 
 ## Deployment
 
+### GitHub Pages (automatic)
+
 Pushes to `main` automatically deploy via GitHub Actions (`.github/workflows/deploy.yml`). The `public/` folder is served as the GitHub Pages site root.
 
 **Manual trigger:** Go to *Actions → Deploy to GitHub Pages → Run workflow*.
 
-**GitHub Pages settings:**
-- *Settings → Pages → Source → GitHub Actions*
+**GitHub Pages settings:** *Settings → Pages → Source → GitHub Actions*
+
+### Cloudflare Worker (CORS proxy)
+
+The CORS proxy is deployed separately on Cloudflare Workers. To update it:
+
+1. Log in to [dash.cloudflare.com](https://dash.cloudflare.com)
+2. Go to **Workers & Pages** → select `wash-proxy`
+3. Click **Edit Code**, paste updated `cloudflare-worker/worker.js`, click **Deploy**
+
+The Worker URL is configured in `public/app.js` as `PROXY_BASE`.
+
+### Local Development
+
+Run `start_dashboard.bat` — this starts a local Python HTTP server and opens Chrome with CORS disabled so API calls work without the proxy.
 
 ---
 
@@ -152,14 +181,15 @@ Pushes to `main` automatically deploy via GitHub Actions (`.github/workflows/dep
 - API keys live only in `localStorage` — they are **never** in the source code or committed to git
 - `.env` is listed in `.gitignore` and will never be pushed
 - The login password is stored as a **SHA-256 hash** in `login.html` — it cannot be reversed to reveal the plaintext password
-- SonSetLink credentials are visible inside network requests if devtools are open — this is unavoidable for a fully browser-based static app. Consider the sensitivity of these credentials accordingly.
+- The Cloudflare Worker only accepts requests from whitelisted origins (`washways.org`, `washways.github.io`, `localhost`)
+- SonSetLink credentials are visible inside network requests if devtools are open — this is unavoidable for a fully browser-based static app
 
 ---
 
 ## Known Limitations
 
-- **CORS**: The browser must accept CORS responses from `api-dev.dcp.solar` and `sonsetlink.org`. Both APIs currently allow cross-origin requests.
-- **Null flow values**: DCP wells that are offline or have inactive sensors will return hourly buckets with `value: null` — shown as `No Data` in the table.
+- **CORS**: API calls on the live site are routed through a Cloudflare Worker CORS proxy. Direct browser-to-API calls will fail due to missing CORS headers on both API servers.
+- **Null flow values**: DCP wells that are offline or have inactive sensors return hourly buckets with `value: null` — shown as `No Data` in the table.
 - **SonSetLink 404s**: The fallback endpoint loop produces 404 responses for some devices. These are silenced in the code and are expected behaviour.
 - **Session auth only**: The login gate persists for the browser session only. Closing and reopening the browser tab requires re-login.
 
@@ -167,4 +197,4 @@ Pushes to `main` automatically deploy via GitHub Actions (`.github/workflows/dep
 
 ## Licence
 
-Internal tool — UNICEF Malawi WASH programme.
+MIT — WASHways water monitoring project.
