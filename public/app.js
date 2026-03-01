@@ -36,13 +36,15 @@ function inMalawiBBox(lat, lon) {
     return la >= MALAWI_BBOX.latMin && la <= MALAWI_BBOX.latMax && lo >= MALAWI_BBOX.lonMin && lo <= MALAWI_BBOX.lonMax;
 }
 
-// ====================== SETTINGS / AUTH ======================
+// ====================== SETTINGS / AUTH (OPTIONAL OVERRIDE) ======================
+// On the live site, the Cloudflare Worker injects default API credentials.
+// Users can optionally enter their own credentials here to override the defaults.
 const settingsModal = el("settingsModal");
 const btnSettings = el("btnSettings");
 const closeSettings = el("closeSettings");
 const saveSettings = el("saveSettings");
 
-btnSettings.onclick = () => {
+if (btnSettings) btnSettings.onclick = () => {
     el("dcpToken").value = localStorage.getItem("dcp_token") || "";
     el("sslUser").value = localStorage.getItem("ssl_user") || "";
     el("sslPass").value = localStorage.getItem("ssl_pass") || "";
@@ -110,13 +112,16 @@ async function fetchJson(url, options = {}, silent = false) {
 
 // --- SONSETLINK ---
 async function sslSites() {
-    // Note: This URL might fail CORS.
     const { sslUser, sslPass } = getKeys();
-    if (!sslUser || !sslPass) return [];
+
+    // On localhost, credentials are required (no Worker proxy)
+    if (!IS_LIVE && (!sslUser || !sslPass)) return [];
 
     const url = new URL(`${SSL_BASE}/sites.json.php`);
-    url.searchParams.set("login", sslUser);
-    url.searchParams.set("password", sslPass);
+    // Only add login/password if user has custom overrides
+    // (on live site, the Worker injects defaults if these are missing)
+    if (sslUser) url.searchParams.set("login", sslUser);
+    if (sslPass) url.searchParams.set("password", sslPass);
 
     try {
         const rows = await fetchJson(url.toString());
@@ -142,19 +147,20 @@ async function sslSites() {
             };
         });
     } catch (e) {
-        console.warn("SonSetLink Error (CORS?):", e);
+        console.warn("SonSetLink Error:", e);
         return [];
     }
 }
 
 async function sslSeries(siteId, serial, startUtc, endUtc) {
     const { sslUser, sslPass } = getKeys();
-    const endpoints = ["usage.json.php", "usage1_msg.json.php", "usage8_msg.json.php", "usage12_msg.json.php"]; // usage1 is most common
+    const endpoints = ["usage.json.php", "usage1_msg.json.php", "usage8_msg.json.php", "usage12_msg.json.php"];
 
     for (const ep of endpoints) {
         const url = new URL(`${SSL_BASE}/${ep}`);
-        url.searchParams.set("login", sslUser);
-        url.searchParams.set("password", sslPass);
+        // Only add login/password if user has custom overrides
+        if (sslUser) url.searchParams.set("login", sslUser);
+        if (sslPass) url.searchParams.set("password", sslPass);
         url.searchParams.set("site", siteId);
         url.searchParams.set("serial", serial);
         url.searchParams.set("start_date", startUtc);
@@ -172,7 +178,9 @@ async function sslSeries(siteId, serial, startUtc, endUtc) {
 
 // --- DCP WATER ---
 async function dcpWells(headers) {
-    const j = await fetchJson(DCP_BASE + "/v1/wells", { headers });
+    const opts = {};
+    if (headers) opts.headers = headers;
+    const j = await fetchJson(DCP_BASE + "/v1/wells", opts);
     if (!Array.isArray(j)) return [];
 
     return j.map(r => {
@@ -326,13 +334,12 @@ function refreshMap() {
 
 
 async function loadSites() {
-    const vrm = getKeys().dcpToken;
-    const ssl = getKeys().sslUser;
+    const { dcpToken, sslUser } = getKeys();
 
-    if ((!vrm || !vrm.trim()) && (!ssl || !ssl.trim())) {
-        // Prompt for settings if BOTH are empty
+    // On localhost (no Worker proxy), require at least one set of credentials
+    if (!IS_LIVE && !dcpToken && !sslUser) {
         logStatus("Please configure API keys in Settings.");
-        settingsModal.style.display = "block";
+        if (settingsModal) settingsModal.style.display = "block";
         return;
     }
 
@@ -343,12 +350,14 @@ async function loadSites() {
     const promises = [];
     const allSites = [];
 
-    // DCP
-    const dcpToken = vrm; // mapped from getKeys().dcpToken above
-    if (dcpToken) {
+    // DCP — on live site, always fetch (Worker injects key); locally, only if user has a key
+    if (IS_LIVE || dcpToken) {
         promises.push((async () => {
             try {
-                const headers = { "X-API-Key": dcpToken, "Accept": "application/json" };
+                // Only send X-API-Key header if user has a custom override
+                const headers = dcpToken
+                    ? { "X-API-Key": dcpToken, "Accept": "application/json" }
+                    : { "Accept": "application/json" };
                 const wells = await dcpWells(headers);
                 allSites.push(...wells);
             } catch (e) {
@@ -358,8 +367,8 @@ async function loadSites() {
         })());
     }
 
-    // SSL
-    if (getKeys().sslUser) {
+    // SSL — on live site, always fetch (Worker injects creds); locally, only if user has creds
+    if (IS_LIVE || sslUser) {
         promises.push(sslSites().then(res => allSites.push(...res)));
     }
 
@@ -394,7 +403,9 @@ async function loadSeries() {
 
     if (s.source === "DCP") {
         const { dcpToken } = getKeys();
-        const headers = { "X-API-Key": dcpToken, "Accept": "application/json" };
+        const headers = dcpToken
+            ? { "X-API-Key": dcpToken, "Accept": "application/json" }
+            : { "Accept": "application/json" };
         rows = await dcpSeries(headers, s.site_id, start.toISOString(), end.toISOString());
     } else if (s.source === "SonSetLink") {
         // Need to format dates as YYYY-MM-DD HH:MM:SS
@@ -513,7 +524,9 @@ async function fetchSeriesForSite(s, days) {
     let rows = [];
     if (s.source === "DCP") {
         const { dcpToken } = getKeys();
-        const headers = { "X-API-Key": dcpToken, "Accept": "application/json" };
+        const headers = dcpToken
+            ? { "X-API-Key": dcpToken, "Accept": "application/json" }
+            : { "Accept": "application/json" };
         const fmtIso = (d) => d.toISOString().replace('.000Z', 'Z');
         rows = await dcpSeries(headers, s.site_id, fmtIso(start), fmtIso(end));
     } else if (s.source === "SonSetLink") {
@@ -653,11 +666,12 @@ function main() {
     if (el("btnExportCSV")) el("btnExportCSV").onclick = doExportCSV;
     if (el("btnExportCSV2")) el("btnExportCSV2").onclick = doExportCSV;
 
-    // Auto load if keys exist
-    if (getKeys().dcpToken || getKeys().sslUser) {
+    // Auto load: on live site always load (Worker has default keys);
+    // on localhost only if user has entered credentials
+    if (IS_LIVE || getKeys().dcpToken || getKeys().sslUser) {
         loadSites();
     } else {
-        logStatus("Welcome. Click Settings to enter API keys.");
+        logStatus("Welcome. Click \u2699 Settings to enter API keys for local development.");
     }
 }
 

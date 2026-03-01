@@ -7,7 +7,7 @@
     <title>WASH Dashboard</title>
 
     <!-- Open Graph / Social Preview -->
-    <meta property="og:title" content="WASH Dashboard - Water Access & Sanitation Monitoring" />
+    <meta property="og:title" content="WASH Dashboard - Water Access and Sanitation Monitoring" />
     <meta property="og:description"
         content="Monitor solar-powered and hand pump waterpoints across Malawi. Track flow data, view live maps and download reports." />
     <meta property="og:image" content="https://washways.org/SiteMonitor/social-preview.png" />
@@ -69,8 +69,8 @@
                     </div>
                 </div>
 
-                <p class="splash-hint">Click <strong>&#x2699; Settings</strong> in the header to enter your API
-                    credentials and start loading data.</p>
+                <p class="splash-hint">Data loads automatically using shared API credentials. If you have your own
+                    access codes, click <strong>&#x2699; Settings</strong> in the header to override.</p>
             </div>
 
             <label class="splash-dismiss-label">
@@ -98,7 +98,7 @@
             <label><input id="malawiOnly" type="checkbox" checked /> Malawi only</label>
             <button id="btnExportCSV" class="btn-csv" title="Download summary CSV">&#x2B07; CSV</button>
             <a href="https://github.com/washways/SiteMonitor#readme" target="_blank" class="btn-doc">&#x1F4D6; Docs</a>
-            <button id="btnSettings" class="btn-icon" title="API Settings">&#x2699;</button>
+            <button id="btnSettings" class="btn-icon" title="Advanced Settings (optional)">&#x2699;</button>
         </div>
     </header>
 
@@ -142,24 +142,25 @@
             <pre id="detail" style="display:none;"></pre>
         </section>
 
-        <!-- ===== SETTINGS MODAL ===== -->
+        <!-- ===== SETTINGS MODAL (optional override) ===== -->
         <div id="settingsModal" class="modal" style="display:none;">
             <div class="modal-content">
                 <span id="closeSettings" class="close">&times;</span>
-                <h2>API Settings</h2>
-                <p><small>Stored locally in your browser.</small></p>
+                <h2>Advanced Settings</h2>
+                <p><small>Optional &mdash; leave blank to use the shared default credentials.<br />Custom keys are
+                        stored locally in your browser only.</small></p>
                 <hr>
                 <div class="field">
                     <label>DCP API Key</label>
-                    <input id="dcpToken" placeholder="dcp..." />
+                    <input id="dcpToken" placeholder="Leave blank for default" />
                 </div>
                 <div class="field">
                     <label>SonSetLink User</label>
-                    <input id="sslUser" />
+                    <input id="sslUser" placeholder="Leave blank for default" />
                 </div>
                 <div class="field">
                     <label>SonSetLink Password</label>
-                    <input type="password" id="sslPass" />
+                    <input type="password" id="sslPass" placeholder="Leave blank for default" />
                 </div>
                 <hr>
                 <button id="saveSettings" class="btn-primary">Save &amp; Reload</button>
@@ -180,33 +181,31 @@
 
     <!-- ===== SPLASH SCREEN LOGIC ===== -->
     <script>
-        (function () {
-            var overlay = document.getElementById('splashOverlay');
-            var closeBtn = document.getElementById('splashClose');
-            var checkbox = document.getElementById('splashDismissCheck');
+    (function () {
+      var overlay = document.getElementById('splashOverlay');
+      var closeBtn = document.getElementById('splashClose');
+      var checkbox = document.getElementById('splashDismissCheck');
 
-            // Show splash unless user has opted out
-            if (localStorage.getItem('wash_splash_dismissed') !== '1') {
-                overlay.style.display = 'flex';
-            }
+      if (localStorage.getItem('wash_splash_dismissed') !== '1') {
+        overlay.style.display = 'flex';
+      }
 
-            closeBtn.addEventListener('click', function () {
-                if (checkbox.checked) {
-                    localStorage.setItem('wash_splash_dismissed', '1');
-                }
-                overlay.style.display = 'none';
-            });
+      closeBtn.addEventListener('click', function () {
+        if (checkbox.checked) {
+          localStorage.setItem('wash_splash_dismissed', '1');
+        }
+        overlay.style.display = 'none';
+      });
 
-            // Also close on clicking the overlay background
-            overlay.addEventListener('click', function (e) {
-                if (e.target === overlay) {
-                    if (checkbox.checked) {
-                        localStorage.setItem('wash_splash_dismissed', '1');
-                    }
-                    overlay.style.display = 'none';
-                }
-            });
-        })();
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) {
+          if (checkbox.checked) {
+            localStorage.setItem('wash_splash_dismissed', '1');
+          }
+          overlay.style.display = 'none';
+        }
+      });
+    })();
     </script>
 
     <script src="app.js"></script>

@@ -4,6 +4,15 @@
  *  Routes:
  *    /dcp/*   →  https://api-dev.dcp.solar/water/*
  *    /ssl/*   →  https://sonsetlink.org/water/technical/*
+ *
+ *  Default API credentials are read from Cloudflare Worker Secrets
+ *  (environment variables). The dashboard can optionally send its
+ *  own credentials to override the defaults.
+ *
+ *  Required secrets (set in Cloudflare dashboard):
+ *    DCP_API_KEY  – DCP Solar API key
+ *    SSL_USER     – SonSetLink login username
+ *    SSL_PASS     – SonSetLink login password
  */
 
 const ROUTES = {
@@ -29,7 +38,7 @@ function corsHeaders(origin) {
 }
 
 export default {
-    async fetch(request) {
+    async fetch(request, env) {
         const url = new URL(request.url);
         const origin = request.headers.get('Origin') || '';
 
@@ -55,7 +64,12 @@ export default {
 
         // Build target URL: strip the prefix, keep the rest of the path + query
         const remainingPath = url.pathname.slice(prefix.length);
-        const targetUrl = targetBase + remainingPath + url.search;
+        const targetUrl = new URL(targetBase + remainingPath);
+
+        // Copy original query params
+        for (const [k, v] of url.searchParams) {
+            targetUrl.searchParams.set(k, v);
+        }
 
         // Clone headers, remove browser-added origin/referer
         const proxyHeaders = new Headers(request.headers);
@@ -64,8 +78,27 @@ export default {
         proxyHeaders.set('Host', new URL(targetBase).host);
         proxyHeaders.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
 
+        // ── Inject default credentials if not provided by client ──
+
+        if (prefix === '/dcp/') {
+            // DCP: use client-supplied X-API-Key, or fall back to env secret
+            if (!proxyHeaders.has('X-API-Key') && env.DCP_API_KEY) {
+                proxyHeaders.set('X-API-Key', env.DCP_API_KEY);
+            }
+        }
+
+        if (prefix === '/ssl/') {
+            // SonSetLink: use client-supplied login/password params, or fall back to env secrets
+            if (!targetUrl.searchParams.has('login') && env.SSL_USER) {
+                targetUrl.searchParams.set('login', env.SSL_USER);
+            }
+            if (!targetUrl.searchParams.has('password') && env.SSL_PASS) {
+                targetUrl.searchParams.set('password', env.SSL_PASS);
+            }
+        }
+
         // Forward the request
-        const apiResponse = await fetch(targetUrl, {
+        const apiResponse = await fetch(targetUrl.toString(), {
             method: request.method,
             headers: proxyHeaders,
             body: request.method !== 'GET' ? request.body : undefined,
