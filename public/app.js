@@ -14,6 +14,7 @@ const SSL_BASE = IS_LIVE ? `${PROXY_BASE}/ssl` : "https://sonsetlink.org/water/t
 
 // Malawi bbox filter
 const MALAWI_BBOX = { latMin: -17.2, latMax: -9.2, lonMin: 32.5, lonMax: 36.1 };
+const WATER_TREND_DAYS = 180; // ~6 months
 
 let map, layerGroup;
 let sites = [];
@@ -40,6 +41,18 @@ function inMalawiBBox(lat, lon) {
 const MALAWI_TZ_OFFSET_MIN = 120;
 function malawiDate(tsMs) {
     return new Date(tsMs + MALAWI_TZ_OFFSET_MIN * 60 * 1000);
+}
+
+// Scoring helper for water-level samples to find the best 03:00–05:00 reading.
+function scoreWaterPoint(p) {
+    const d = malawiDate(p.timestamp_ms);
+    const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
+    const targetMinutes = 4 * 60; // 04:00
+    const windowStart = 3 * 60;
+    const windowEnd = 5 * 60;
+    const dist = Math.abs(mins - targetMinutes);
+    const inWindow = mins >= windowStart && mins < windowEnd;
+    return { dist, inWindow, mins };
 }
 
 // ====================== SETTINGS / AUTH (OPTIONAL OVERRIDE) ======================
@@ -243,6 +256,29 @@ async function dcpSeries(headers, wellId, startIso, endIso) {
     return [...flowPts, ...wlPts];
 }
 
+// Water-level only series (used for 6-month trend sparkline).
+async function dcpWaterLevelSeries(headers, wellId, startIso, endIso) {
+    try {
+        const url = new URL(DCP_BASE + "/v1/wells/" + wellId + "/timeseries");
+        url.searchParams.set("parameter", "water_level_above_pump");
+        const fmtIso = (iso) => iso.includes('.') ? iso.split('.')[0] + 'Z' : iso;
+        url.searchParams.set("from", fmtIso(startIso));
+        url.searchParams.set("to", fmtIso(endIso));
+
+        const payload = await fetchJson(url.toString(), { headers });
+        const values = payload.time_series?.values || [];
+
+        return values.filter(v => v.value !== undefined && v.value !== null).map(v => ({
+            code: "water_level_above_pump",
+            value: Number(v.value),
+            timestamp_ms: new Date(v.time).getTime()
+        }));
+    } catch (e) {
+        console.warn("Failed to fetch water level for trend for well " + wellId, e);
+        return [];
+    }
+}
+
 
 function renderSparkline(data) {
     if (!data || data.length < 2) return `<span style="color:#ccc; font-size:0.8em">No Trend</span>`;
@@ -274,20 +310,8 @@ function pickStableWaterLevel(points) {
     const wlPts = points.filter(p => p.code === "water_level_above_pump");
     if (!wlPts.length) return null;
 
-    const targetMinutes = 4 * 60; // 04:00
-    const windowStart = 3 * 60;
-    const windowEnd = 5 * 60;
-
-    const score = (p) => {
-        const d = malawiDate(p.timestamp_ms);
-        const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
-        const dist = Math.abs(mins - targetMinutes);
-        const inWindow = mins >= windowStart && mins < windowEnd;
-        return { dist, inWindow, mins };
-    };
-
     // Prefer points inside the window; within that, closest to 04:00, then latest.
-    const ranked = wlPts.map(p => ({ p, ...score(p) }))
+    const ranked = wlPts.map(p => ({ p, ...scoreWaterPoint(p) }))
         .sort((a, b) => {
             if (a.inWindow !== b.inWindow) return a.inWindow ? -1 : 1;
             if (a.dist !== b.dist) return a.dist - b.dist;
@@ -295,6 +319,32 @@ function pickStableWaterLevel(points) {
         });
 
     return ranked[0].p.value;
+}
+
+// Build a daily water-level trend (one best pre-dawn point per day) ordered oldest→newest.
+function buildWaterLevelTrend(wlPts) {
+    if (!wlPts || !wlPts.length) return [];
+    const byDay = new Map();
+
+    for (const p of wlPts) {
+        const d = malawiDate(p.timestamp_ms);
+        const dayKey = d.toISOString().slice(0, 10); // YYYY-MM-DD in Malawi time
+        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+        byDay.get(dayKey).push(p);
+    }
+
+    const days = Array.from(byDay.keys()).sort();
+    const series = [];
+    for (const day of days) {
+        const ranked = byDay.get(day).map(p => ({ p, ...scoreWaterPoint(p) }))
+            .sort((a, b) => {
+                if (a.inWindow !== b.inWindow) return a.inWindow ? -1 : 1;
+                if (a.dist !== b.dist) return a.dist - b.dist;
+                return b.p.timestamp_ms - a.p.timestamp_ms;
+            });
+        if (ranked.length) series.push(Number(ranked[0].p.value));
+    }
+    return series;
 }
 
 function initMap() {
@@ -571,13 +621,33 @@ async function fetchSeriesForSite(s, days) {
     return rows;
 }
 
+async function fetchWaterTrendForSite(s) {
+    if (s.source !== "DCP") return [];
+
+    const { dcpToken } = getKeys();
+    // On localhost we still need a user token to call DCP
+    if (!IS_LIVE && !dcpToken) return [];
+
+    const headers = dcpToken
+        ? { "X-API-Key": dcpToken, "Accept": "application/json" }
+        : { "Accept": "application/json" };
+
+    const endDay = new Date();
+    endDay.setUTCHours(0, 0, 0, 0);
+    const end = new Date(endDay.getTime() + 24 * 3600 * 1000);
+    const start = new Date(endDay.getTime() - WATER_TREND_DAYS * 24 * 3600 * 1000);
+    const fmtIso = (d) => d.toISOString().replace('.000Z', 'Z');
+
+    return dcpWaterLevelSeries(headers, s.site_id, fmtIso(start), fmtIso(end));
+}
+
 let allReportRows = [];
 
 async function renderTable() {
     const days = Number(el("days").value || 7);
     el("daysLabel").textContent = days;
     const tbody = el("reportTable").querySelector("tbody");
-    tbody.innerHTML = "<tr><td colspan='7'>Loading data...</td></tr>";
+    tbody.innerHTML = "<tr><td colspan='8'>Loading data...</td></tr>";
 
     allReportRows = [];
 
@@ -590,11 +660,15 @@ async function renderTable() {
         logStatus(`Fetching data... ${i + batch.length} / ${sorted.length}`);
 
         await Promise.all(batch.map(async (s) => {
-            const points = await fetchSeriesForSite(s, days);
+            const [points, wlTrendRaw] = await Promise.all([
+                fetchSeriesForSite(s, days),
+                s.source === "DCP" ? fetchWaterTrendForSite(s) : Promise.resolve([])
+            ]);
 
             let totalFlow = 0;
             let sparkData = [];
             let stableDepth = null;
+            let waterTrend = [];
 
             if (s.source === "DCP") {
                 // filter just flow for sparklines
@@ -605,6 +679,7 @@ async function renderTable() {
                     sparkData = vals;
                 }
                 stableDepth = pickStableWaterLevel(points);
+                waterTrend = buildWaterLevelTrend(wlTrendRaw);
             } else if (s.source === "SonSetLink") {
                 totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
                 sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
@@ -614,6 +689,7 @@ async function renderTable() {
             s.totalFlow = totalFlow;
             s.sparkData = sparkData;
             s.waterDepth = stableDepth;
+            s.waterTrend = waterTrend;
             s.status = points.length > 0 ? "OK" : "No Data";
             console.log(`Site ${s.site_name} (${s.source}): Loaded ${points.length} pts. Flow=${totalFlow}`);
         }));
@@ -625,7 +701,8 @@ async function renderTable() {
     tbody.innerHTML = "";
     for (const s of sorted) {
         const tr = document.createElement("tr");
-        const sparkSvg = renderSparkline(s.sparkData);
+        const flowSpark = renderSparkline(s.sparkData);
+        const wlSpark = renderSparkline(s.waterTrend || []);
         const color = s.status === 'OK' ? 'green' : 'red';
         const depthTxt = (s.waterDepth === null || s.waterDepth === undefined || Number.isNaN(s.waterDepth))
             ? "&mdash;"
@@ -636,8 +713,9 @@ async function renderTable() {
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.site_name}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.site_id}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${Math.round(s.totalFlow * 100) / 100}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${flowSpark}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${depthTxt}</td>
-            <td style="padding:8px; border-bottom:1px solid #ddd;">${sparkSvg}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${wlSpark}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd; color:${color}">${s.status}</td>
         `;
 
