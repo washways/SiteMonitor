@@ -6,11 +6,14 @@
 // deploying the worker (see cloudflare-worker/worker.js).
 const PROXY_BASE = "https://wash-proxy.washways1.workers.dev";  // ← UPDATE THIS
 
-const IS_LIVE = !location.hostname.match(/^(localhost|127\.0\.0\.1)$/);
+const IS_LOCAL = !!location.hostname.match(/^(localhost|127\.0\.0\.1)$/);
+const FORCE_PROXY = window.location.search.includes("proxy=1");
+const USE_PROXY = !IS_LOCAL || FORCE_PROXY;
+const IS_LIVE = USE_PROXY; // treat proxied localhost the same as live for credential injection
 
 // Base URLs: proxied on live site, direct on localhost
-const DCP_BASE = IS_LIVE ? `${PROXY_BASE}/dcp` : "https://api-dev.dcp.solar/water";
-const SSL_BASE = IS_LIVE ? `${PROXY_BASE}/ssl` : "https://sonsetlink.org/water/technical";
+const DCP_BASE = USE_PROXY ? `${PROXY_BASE}/dcp` : "https://api-dev.dcp.solar/water";
+const SSL_BASE = USE_PROXY ? `${PROXY_BASE}/ssl` : "https://sonsetlink.org/water/technical";
 
 // Malawi bbox filter
 const MALAWI_BBOX = { latMin: -17.2, latMax: -9.2, lonMin: 32.5, lonMax: 36.1 };
@@ -420,9 +423,9 @@ function refreshMap() {
 async function loadSites() {
     const { dcpToken, sslUser } = getKeys();
 
-    // On localhost (no Worker proxy), require at least one set of credentials
-    if (!IS_LIVE && !dcpToken && !sslUser) {
-        logStatus("Please configure API keys in Settings.");
+    // On localhost, default to proxy+injected creds unless user supplies overrides.
+    if (!USE_PROXY && !dcpToken && !sslUser) {
+        logStatus("Please configure API keys in Settings or add ?proxy=1 to use the proxy.");
         if (settingsModal) settingsModal.style.display = "block";
         return;
     }
@@ -816,14 +819,19 @@ function main() {
     if (el("btnExportCSV")) el("btnExportCSV").onclick = doExportCSV;
     if (el("btnExportCSV2")) el("btnExportCSV2").onclick = doExportCSV;
     
-    // Auto load: on live site always load (Worker has default keys);
-    // on localhost only if user has entered credentials
-    if (IS_LIVE || getKeys().dcpToken || getKeys().sslUser) {
+    // Auto load: on live or when proxy forced; otherwise require keys
+    if (IS_LIVE || USE_PROXY || getKeys().dcpToken || getKeys().sslUser) {
         loadSites();
     } else {
         logStatus("Welcome. Click \u2699 Settings to enter API keys for local development.");
     }
 }
 
-main();
+try {
+    main();
+} catch (e) {
+    console.error("App init failed", e);
+    logStatus("Init failed: " + e.message);
+    alert("Init failed: " + e.message);
+}
 
