@@ -632,13 +632,24 @@ async function fetchWaterTrendForSite(s) {
         ? { "X-API-Key": dcpToken, "Accept": "application/json" }
         : { "Accept": "application/json" };
 
+    // Sample weekly to lighten the API load: one stable pre-dawn value per week for 6 months.
     const endDay = new Date();
     endDay.setUTCHours(0, 0, 0, 0);
-    const end = new Date(endDay.getTime() + 24 * 3600 * 1000);
-    const start = new Date(endDay.getTime() - WATER_TREND_DAYS * 24 * 3600 * 1000);
+    const WEEKS = Math.ceil(WATER_TREND_DAYS / 7); // ~26
+    const WEEK_MS = 7 * 24 * 3600 * 1000;
     const fmtIso = (d) => d.toISOString().replace('.000Z', 'Z');
 
-    return dcpWaterLevelSeries(headers, s.site_id, fmtIso(start), fmtIso(end));
+    const trend = [];
+    for (let i = WEEKS; i >= 1; i--) {
+        const weekStart = new Date(endDay.getTime() - i * WEEK_MS);
+        const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
+        const pts = await dcpWaterLevelSeries(headers, s.site_id, fmtIso(weekStart), fmtIso(weekEnd));
+        const sample = pickStableWaterLevel(pts);
+        if (sample !== null && sample !== undefined && !Number.isNaN(sample)) {
+            trend.push(Number(sample));
+        }
+    }
+    return trend;
 }
 
 let allReportRows = [];
@@ -660,7 +671,7 @@ async function renderTable() {
         logStatus(`Fetching data... ${i + batch.length} / ${sorted.length}`);
 
         await Promise.all(batch.map(async (s) => {
-            const [points, wlTrendRaw] = await Promise.all([
+            const [points, waterTrend] = await Promise.all([
                 fetchSeriesForSite(s, days),
                 s.source === "DCP" ? fetchWaterTrendForSite(s) : Promise.resolve([])
             ]);
@@ -679,7 +690,6 @@ async function renderTable() {
                     sparkData = vals;
                 }
                 stableDepth = pickStableWaterLevel(points);
-                waterTrend = buildWaterLevelTrend(wlTrendRaw);
             } else if (s.source === "SonSetLink") {
                 totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
                 sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
@@ -689,7 +699,7 @@ async function renderTable() {
             s.totalFlow = totalFlow;
             s.sparkData = sparkData;
             s.waterDepth = stableDepth;
-            s.waterTrend = waterTrend;
+            s.waterTrend = waterTrend || [];
             s.status = points.length > 0 ? "OK" : "No Data";
             console.log(`Site ${s.site_name} (${s.source}): Loaded ${points.length} pts. Flow=${totalFlow}`);
         }));
