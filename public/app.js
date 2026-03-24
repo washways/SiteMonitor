@@ -468,7 +468,12 @@ async function loadSites() {
     logStatus(`Done. Found ${sites.length} sites.`);
     refreshDropdown();
     refreshMap();
-    renderTable();
+    try {
+        await renderTable();
+    } catch (err) {
+        console.error("Render table failed", err);
+        logStatus("Table render failed: " + err.message);
+    }
 }
 
 async function loadSeries() {
@@ -671,37 +676,47 @@ async function renderTable() {
         logStatus(`Fetching data... ${i + batch.length} / ${sorted.length}`);
 
         await Promise.all(batch.map(async (s) => {
-            const [points, waterTrend] = await Promise.all([
-                fetchSeriesForSite(s, days),
-                s.source === "DCP" ? fetchWaterTrendForSite(s) : Promise.resolve([])
-            ]);
+            try {
+                const [points, waterTrend] = await Promise.all([
+                    fetchSeriesForSite(s, days),
+                    s.source === "DCP" ? fetchWaterTrendForSite(s) : Promise.resolve([])
+                ]);
 
-            let totalFlow = 0;
-            let sparkData = [];
-            let stableDepth = null;
-            let waterTrend = [];
+                let totalFlow = 0;
+                let sparkData = [];
+                let stableDepth = null;
 
-            if (s.source === "DCP") {
-                // filter just flow for sparklines
-                const flowPts = points.filter(p => p.code === "flow").sort((a, b) => a.timestamp_ms - b.timestamp_ms);
-                if (flowPts.length > 0) {
-                    const vals = flowPts.map(p => Number(p.value) || 0);
-                    totalFlow = vals.reduce((acc, val) => acc + val, 0); // periodic flow is aggregated via sum
-                    sparkData = vals;
+                if (s.source === "DCP") {
+                    // filter just flow for sparklines
+                    const flowPts = points.filter(p => p.code === "flow").sort((a, b) => a.timestamp_ms - b.timestamp_ms);
+                    if (flowPts.length > 0) {
+                        const vals = flowPts.map(p => Number(p.value) || 0);
+                        totalFlow = vals.reduce((acc, val) => acc + val, 0); // periodic flow is aggregated via sum
+                        sparkData = vals;
+                    }
+                    stableDepth = pickStableWaterLevel(points);
+                    s.waterTrend = waterTrend || [];
+                } else if (s.source === "SonSetLink") {
+                    totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
+                    sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
+                    s.waterTrend = [];
                 }
-                stableDepth = pickStableWaterLevel(points);
-            } else if (s.source === "SonSetLink") {
-                totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
-                sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
-            }
 
-            s.points = points;
-            s.totalFlow = totalFlow;
-            s.sparkData = sparkData;
-            s.waterDepth = stableDepth;
-            s.waterTrend = waterTrend || [];
-            s.status = points.length > 0 ? "OK" : "No Data";
-            console.log(`Site ${s.site_name} (${s.source}): Loaded ${points.length} pts. Flow=${totalFlow}`);
+                s.points = points;
+                s.totalFlow = totalFlow;
+                s.sparkData = sparkData;
+                s.waterDepth = stableDepth;
+                s.status = points.length > 0 ? "OK" : "No Data";
+                console.log(`Site ${s.site_name} (${s.source}): Loaded ${points.length} pts. Flow=${totalFlow}`);
+            } catch (err) {
+                console.error("Site fetch failed", s.site_name, err);
+                s.points = [];
+                s.totalFlow = 0;
+                s.sparkData = [];
+                s.waterDepth = null;
+                s.waterTrend = [];
+                s.status = "Error";
+            }
         }));
     }
 
