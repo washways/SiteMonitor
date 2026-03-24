@@ -36,6 +36,12 @@ function inMalawiBBox(lat, lon) {
     return la >= MALAWI_BBOX.latMin && la <= MALAWI_BBOX.latMax && lo >= MALAWI_BBOX.lonMin && lo <= MALAWI_BBOX.lonMax;
 }
 
+// Malawi is UTC+2 with no DST. We use this to pick a stable pre-dawn reading.
+const MALAWI_TZ_OFFSET_MIN = 120;
+function malawiDate(tsMs) {
+    return new Date(tsMs + MALAWI_TZ_OFFSET_MIN * 60 * 1000);
+}
+
 // ====================== SETTINGS / AUTH (OPTIONAL OVERRIDE) ======================
 // On the live site, the Cloudflare Worker injects default API credentials.
 // Users can optionally enter their own credentials here to override the defaults.
@@ -262,6 +268,34 @@ function renderSparkline(data) {
 }
 
 // ====================== APP LOGIC ======================
+
+// Choose a water-level point taken between 03:00–05:00 Malawi time (stable window).
+function pickStableWaterLevel(points) {
+    const wlPts = points.filter(p => p.code === "water_level_above_pump");
+    if (!wlPts.length) return null;
+
+    const targetMinutes = 4 * 60; // 04:00
+    const windowStart = 3 * 60;
+    const windowEnd = 5 * 60;
+
+    const score = (p) => {
+        const d = malawiDate(p.timestamp_ms);
+        const mins = d.getUTCHours() * 60 + d.getUTCMinutes();
+        const dist = Math.abs(mins - targetMinutes);
+        const inWindow = mins >= windowStart && mins < windowEnd;
+        return { dist, inWindow, mins };
+    };
+
+    // Prefer points inside the window; within that, closest to 04:00, then latest.
+    const ranked = wlPts.map(p => ({ p, ...score(p) }))
+        .sort((a, b) => {
+            if (a.inWindow !== b.inWindow) return a.inWindow ? -1 : 1;
+            if (a.dist !== b.dist) return a.dist - b.dist;
+            return b.p.timestamp_ms - a.p.timestamp_ms;
+        });
+
+    return ranked[0].p.value;
+}
 
 function initMap() {
     map = L.map("map").setView([-13.9, 33.8], 6);
@@ -543,7 +577,7 @@ async function renderTable() {
     const days = Number(el("days").value || 7);
     el("daysLabel").textContent = days;
     const tbody = el("reportTable").querySelector("tbody");
-    tbody.innerHTML = "<tr><td colspan='6'>Loading data...</td></tr>";
+    tbody.innerHTML = "<tr><td colspan='7'>Loading data...</td></tr>";
 
     allReportRows = [];
 
@@ -560,6 +594,7 @@ async function renderTable() {
 
             let totalFlow = 0;
             let sparkData = [];
+            let stableDepth = null;
 
             if (s.source === "DCP") {
                 // filter just flow for sparklines
@@ -569,6 +604,7 @@ async function renderTable() {
                     totalFlow = vals.reduce((acc, val) => acc + val, 0); // periodic flow is aggregated via sum
                     sparkData = vals;
                 }
+                stableDepth = pickStableWaterLevel(points);
             } else if (s.source === "SonSetLink") {
                 totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
                 sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
@@ -577,6 +613,7 @@ async function renderTable() {
             s.points = points;
             s.totalFlow = totalFlow;
             s.sparkData = sparkData;
+            s.waterDepth = stableDepth;
             s.status = points.length > 0 ? "OK" : "No Data";
             console.log(`Site ${s.site_name} (${s.source}): Loaded ${points.length} pts. Flow=${totalFlow}`);
         }));
@@ -590,12 +627,16 @@ async function renderTable() {
         const tr = document.createElement("tr");
         const sparkSvg = renderSparkline(s.sparkData);
         const color = s.status === 'OK' ? 'green' : 'red';
+        const depthTxt = (s.waterDepth === null || s.waterDepth === undefined || Number.isNaN(s.waterDepth))
+            ? "&mdash;"
+            : (Math.round(Number(s.waterDepth) * 100) / 100).toFixed(2);
 
         tr.innerHTML = `
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.source}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.site_name}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.site_id}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${Math.round(s.totalFlow * 100) / 100}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${depthTxt}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${sparkSvg}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd; color:${color}">${s.status}</td>
         `;
@@ -617,6 +658,7 @@ async function renderTable() {
             sysId: s.site_id,
             name: s.site_name,
             total: s.totalFlow,
+            depth: s.waterDepth,
             status: s.status
         });
     }
@@ -651,8 +693,13 @@ function main() {
     function doExportCSV() {
         if (!allReportRows || !allReportRows.length) { alert("No data to export."); return; }
         const days = el("days").value || 7;
-        let csv = `Source,System ID,Site Name,Total Flow (m³)\n`;
-        csv += allReportRows.map(r => `${r.source},"${r.sysId}","${r.name}",${r.total}`).join("\n");
+        let csv = `Source,System ID,Site Name,Total Flow (m3),Water Level 03-05h (m)\n`;
+        csv += allReportRows.map(r => {
+            const depth = (r.depth === null || r.depth === undefined || Number.isNaN(r.depth))
+                ? ""
+                : (Math.round(Number(r.depth) * 100) / 100).toFixed(2);
+            return `${r.source},"${r.sysId}","${r.name}",${r.total},${depth}`;
+        }).join("\n");
         const blob = new Blob([csv], { type: "text/csv" });
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -665,7 +712,7 @@ function main() {
     }
     if (el("btnExportCSV")) el("btnExportCSV").onclick = doExportCSV;
     if (el("btnExportCSV2")) el("btnExportCSV2").onclick = doExportCSV;
-
+    
     // Auto load: on live site always load (Worker has default keys);
     // on localhost only if user has entered credentials
     if (IS_LIVE || getKeys().dcpToken || getKeys().sslUser) {
@@ -676,3 +723,4 @@ function main() {
 }
 
 main();
+
