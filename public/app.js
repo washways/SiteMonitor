@@ -306,6 +306,44 @@ function renderSparkline(data) {
         </svg>`;
 }
 
+// Depth sparkline with minimal axes and units (weekly points, depth in m, date on x-axis).
+function renderDepthSparkline(series) {
+    if (!series || series.length < 2) return `<span style="color:#ccc; font-size:0.8em">No Trend</span>`;
+
+    const width = 140;
+    const height = 60;
+    const padL = 28;
+    const padB = 16;
+    const innerW = width - padL - 4;
+    const innerH = height - padB - 4;
+
+    const values = series.map(p => Number(p.value));
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const range = (max - min) || 1;
+
+    const step = innerW / (series.length - 1);
+    const pts = series.map((p, i) => {
+        const x = padL + i * step;
+        const y = 2 + innerH - ((p.value - min) / range) * innerH;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+
+    const firstDate = series[0].date || "";
+    const lastDate = series[series.length - 1].date || "";
+
+    return `<svg width="${width}" height="${height}" style="background:#fcfcfc; border:1px solid #eee">
+        <g stroke="#e5e7eb" stroke-width="1">
+            <line x1="${padL}" y1="2" x2="${padL}" y2="${height - padB}" />
+            <line x1="${padL}" y1="${height - padB}" x2="${width - 2}" y2="${height - padB}" />
+        </g>
+        <text x="6" y="${height / 2}" font-size="9" fill="#6b7280" transform="rotate(-90 6 ${height / 2})">m</text>
+        <text x="${padL}" y="${height - 4}" font-size="9" fill="#6b7280">${firstDate}</text>
+        <text x="${width - 2}" y="${height - 4}" font-size="9" fill="#6b7280" text-anchor="end">${lastDate}</text>
+        <path d="M${pts.join(' L')}" stroke="#f59e0b" stroke-width="1.5" fill="none" />
+    </svg>`;
+}
+
 // ====================== APP LOGIC ======================
 
 // Choose a water-level point taken between 03:00–05:00 Malawi time (stable window).
@@ -654,7 +692,7 @@ async function fetchWaterTrendForSite(s) {
         const pts = await dcpWaterLevelSeries(headers, s.site_id, fmtIso(weekStart), fmtIso(weekEnd));
         const sample = pickStableWaterLevel(pts);
         if (sample !== null && sample !== undefined && !Number.isNaN(sample)) {
-            trend.push(Number(sample));
+            trend.push({ date: weekStart.toISOString().slice(0, 10), value: Number(sample) });
         }
     }
     return trend;
@@ -698,7 +736,7 @@ async function renderTable() {
                         sparkData = vals;
                     }
                     stableDepth = pickStableWaterLevel(points);
-                    s.waterTrend = waterTrend || [];
+            s.waterTrend = waterTrend || [];
                 } else if (s.source === "SonSetLink") {
                     totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
                     sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
@@ -730,7 +768,7 @@ async function renderTable() {
     for (const s of sorted) {
         const tr = document.createElement("tr");
         const flowSpark = renderSparkline(s.sparkData);
-        const wlSpark = renderSparkline(s.waterTrend || []);
+        const wlSpark = renderDepthSparkline(s.waterTrend || []);
         const color = s.status === 'OK' ? 'green' : 'red';
         const depthTxt = (s.waterDepth === null || s.waterDepth === undefined || Number.isNaN(s.waterDepth))
             ? "&mdash;"
