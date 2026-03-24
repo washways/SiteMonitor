@@ -338,6 +338,8 @@ function renderDepthSparkline(series) {
             <line x1="${padL}" y1="${height - padB}" x2="${width - 2}" y2="${height - padB}" />
         </g>
         <text x="6" y="${height / 2}" font-size="9" fill="#6b7280" transform="rotate(-90 6 ${height / 2})">m</text>
+        <text x="2" y="10" font-size="9" fill="#6b7280">${max.toFixed(2)}</text>
+        <text x="2" y="${height - padB - 2}" font-size="9" fill="#6b7280">${min.toFixed(2)}</text>
         <text x="${padL}" y="${height - 4}" font-size="9" fill="#6b7280">${firstDate}</text>
         <text x="${width - 2}" y="${height - 4}" font-size="9" fill="#6b7280" text-anchor="end">${lastDate}</text>
         <path d="M${pts.join(' L')}" stroke="#f59e0b" stroke-width="1.5" fill="none" />
@@ -678,24 +680,41 @@ async function fetchWaterTrendForSite(s) {
         ? { "X-API-Key": dcpToken, "Accept": "application/json" }
         : { "Accept": "application/json" };
 
-    // Sample weekly to lighten the API load: one stable pre-dawn value per week for 6 months.
+    // One call for ~6 months, then pick one pre-dawn point per day, then downsample every 3rd day.
     const endDay = new Date();
     endDay.setUTCHours(0, 0, 0, 0);
-    const WEEKS = Math.ceil(WATER_TREND_DAYS / 7); // ~26
-    const WEEK_MS = 7 * 24 * 3600 * 1000;
+    const start = new Date(endDay.getTime() - WATER_TREND_DAYS * 24 * 3600 * 1000);
     const fmtIso = (d) => d.toISOString().replace('.000Z', 'Z');
 
-    const trend = [];
-    for (let i = WEEKS; i >= 1; i--) {
-        const weekStart = new Date(endDay.getTime() - i * WEEK_MS);
-        const weekEnd = new Date(weekStart.getTime() + WEEK_MS);
-        const pts = await dcpWaterLevelSeries(headers, s.site_id, fmtIso(weekStart), fmtIso(weekEnd));
-        const sample = pickStableWaterLevel(pts);
-        if (sample !== null && sample !== undefined && !Number.isNaN(sample)) {
-            trend.push({ date: weekStart.toISOString().slice(0, 10), value: Number(sample) });
+    const pts = await dcpWaterLevelSeries(headers, s.site_id, fmtIso(start), fmtIso(endDay));
+    if (!pts.length) return [];
+
+    const byDay = new Map();
+    for (const p of pts) {
+        const d = malawiDate(p.timestamp_ms);
+        const dayKey = d.toISOString().slice(0, 10);
+        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+        byDay.get(dayKey).push(p);
+    }
+
+    const dates = Array.from(byDay.keys()).sort();
+    const daily = [];
+    for (const day of dates) {
+        const ranked = byDay.get(day).map(p => ({ p, ...scoreWaterPoint(p) }))
+            .sort((a, b) => {
+                if (a.inWindow !== b.inWindow) return a.inWindow ? -1 : 1;
+                if (a.dist !== b.dist) return a.dist - b.dist;
+                return b.p.timestamp_ms - a.p.timestamp_ms;
+            });
+        if (ranked.length) {
+            daily.push({ date: day, value: Number(ranked[0].p.value) });
         }
     }
-    return trend;
+
+    // Downsample to every ~3rd day to reduce render cost.
+    const step = 3;
+    const sampled = daily.filter((_, idx) => idx % step === 0);
+    return sampled.length >= 2 ? sampled : daily;
 }
 
 let allReportRows = [];
