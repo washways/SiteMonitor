@@ -46,6 +46,9 @@ function malawiDate(tsMs) {
     return new Date(tsMs + MALAWI_TZ_OFFSET_MIN * 60 * 1000);
 }
 
+// Cache parameter metadata (id -> {label, unit})
+let paramCatalog = new Map();
+
 // Scoring helper for water-level samples to find the best 03:00–05:00 reading.
 function scoreWaterPoint(p) {
     const d = malawiDate(p.timestamp_ms);
@@ -198,30 +201,32 @@ async function sslSeries(siteId, serial, startUtc, endUtc) {
     return { rows: [] };
 }
 
-// --- DCP WATER ---
+// --- DCP WATER (v2) ---
+async function dcpParameters(headers) {
+    const opts = {};
+    if (headers) opts.headers = headers;
+    const j = await fetchJson(DCP_BASE + "/v2/parameters", opts);
+    if (!Array.isArray(j)) return;
+    paramCatalog = new Map(j.map(p => [p.id, { label: p.label, unit: p.unit }]));
+}
+
 async function dcpWells(headers) {
     const opts = {};
     if (headers) opts.headers = headers;
-    const j = await fetchJson(DCP_BASE + "/v1/wells", opts);
+    const j = await fetchJson(DCP_BASE + "/v2/wells", opts);
     if (!Array.isArray(j)) return [];
 
     return j.map(r => {
         let lat = null, lon = null;
         if (r.location && typeof r.location === 'object') {
-            lat = Number(r.location.latitude ?? r.location.lat);
-            lon = Number(r.location.longitude ?? r.location.lon);
-        } else if (typeof r.location === 'string') {
-            const parts = r.location.split(',');
-            if (parts.length === 2) {
-                lat = Number(parts[0]);
-                lon = Number(parts[1]);
-            }
+            lat = Number(r.location.lat);
+            lon = Number(r.location.lon);
         }
         return {
             source: "DCP",
             site_id: String(r.well_id),
             site_name: String(r.name),
-            last_updated: r.commissioned_date ? (new Date(r.commissioned_date).getTime() / 1000) : null,
+            last_updated: r.last_seen ? (new Date(r.last_seen).getTime() / 1000) : null,
             lat: lat, lon: lon, stats: {},
             country: ""
         };
@@ -231,7 +236,7 @@ async function dcpWells(headers) {
 async function dcpSeries(headers, wellId, startIso, endIso) {
     const fetchParam = async (paramId) => {
         try {
-            const url = new URL(DCP_BASE + "/v1/wells/" + wellId + "/timeseries");
+            const url = new URL(DCP_BASE + "/v2/wells/" + wellId + "/timeseries");
             url.searchParams.set("parameter", paramId);
             const fmtIso = (iso) => iso.includes('.') ? iso.split('.')[0] + 'Z' : iso;
             url.searchParams.set("from", fmtIso(startIso));
@@ -262,7 +267,7 @@ async function dcpSeries(headers, wellId, startIso, endIso) {
 // Water-level only series (used for 6-month trend sparkline).
 async function dcpWaterLevelSeries(headers, wellId, startIso, endIso) {
     try {
-        const url = new URL(DCP_BASE + "/v1/wells/" + wellId + "/timeseries");
+        const url = new URL(DCP_BASE + "/v2/wells/" + wellId + "/timeseries");
         url.searchParams.set("parameter", "water_level_above_pump");
         const fmtIso = (iso) => iso.includes('.') ? iso.split('.')[0] + 'Z' : iso;
         url.searchParams.set("from", fmtIso(startIso));
@@ -485,6 +490,8 @@ async function loadSites() {
                 const headers = dcpToken
                     ? { "X-API-Key": dcpToken, "Accept": "application/json" }
                     : { "Accept": "application/json" };
+                // Fetch parameter catalog once
+                await dcpParameters(headers);
                 const wells = await dcpWells(headers);
                 allSites.push(...wells);
             } catch (e) {
