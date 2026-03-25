@@ -48,6 +48,17 @@ function malawiDate(tsMs) {
 
 // Cache parameter metadata (id -> {label, unit})
 let paramCatalog = new Map();
+function getUnit(paramId, fallback) {
+    return (paramCatalog.get(paramId)?.unit) || fallback;
+}
+function refreshColumnLabels() {
+    const flowUnit = getUnit("flow", "m³");
+    const depthUnit = getUnit("water_level_above_pump", "m");
+    const thFlow = document.getElementById("thFlowTotal");
+    const thDepth = document.getElementById("thDepthValue");
+    if (thFlow) thFlow.textContent = `Total Flow (${flowUnit})`;
+    if (thDepth) thDepth.textContent = `Water Level 03–05h (${depthUnit})`;
+}
 
 // Scoring helper for water-level samples to find the best 03:00–05:00 reading.
 function scoreWaterPoint(p) {
@@ -231,6 +242,21 @@ async function dcpWells(headers) {
             country: ""
         };
     });
+}
+
+async function dcpSites(headers) {
+    const opts = {};
+    if (headers) opts.headers = headers;
+    const j = await fetchJson(DCP_BASE + "/v2/sites", opts);
+    if (!Array.isArray(j)) return [];
+    return j.map(site => ({
+        site_id: site.site_id,
+        name: site.name,
+        commissioned_date: site.commissioned_date,
+        location: site.location,
+        wells: site.wells || [],
+        components: site.components || []
+    }));
 }
 
 async function dcpSeries(headers, wellId, startIso, endIso) {
@@ -492,8 +518,35 @@ async function loadSites() {
                     : { "Accept": "application/json" };
                 // Fetch parameter catalog once
                 await dcpParameters(headers);
-                const wells = await dcpWells(headers);
-                allSites.push(...wells);
+                refreshColumnLabels();
+                const [wells, sites] = await Promise.all([
+                    dcpWells(headers),
+                    dcpSites(headers)
+                ]);
+
+                // Map wells to site metadata/components
+                const siteByWell = new Map();
+                for (const site of sites) {
+                    for (const w of site.wells || []) {
+                        siteByWell.set(String(w.well_id), {
+                            site_name: site.name,
+                            site_id: site.site_id,
+                            site_components: site.components || [],
+                            site_location: site.location
+                        });
+                    }
+                }
+
+                for (const w of wells) {
+                    const extra = siteByWell.get(w.site_id) || {};
+                    w.components = extra.site_components || [];
+                    w.site_label = extra.site_name || w.site_name;
+                    w.site_parent_id = extra.site_id;
+                    if (!w.lat && extra.site_location) w.lat = Number(extra.site_location.lat);
+                    if (!w.lon && extra.site_location) w.lon = Number(extra.site_location.lon);
+                    if (!w.site_name) w.site_name = extra.site_name || w.site_name;
+                    allSites.push(w);
+                }
             } catch (e) {
                 console.error("DCP Load Error", e);
                 logStatus("DCP Error: " + e.message);
@@ -836,7 +889,7 @@ async function renderTable() {
 
 function loadSeriesFromCache(s) {
     el("detailSection").style.display = "block";
-    el("detailTitle").textContent = `Details for ${s.site_name}`;
+    el("detailTitle").textContent = `Details for ${s.site_label || s.site_name}`;
     const chartContainer = el("chart");
     chartContainer.innerHTML = "";
 
@@ -845,7 +898,19 @@ function loadSeriesFromCache(s) {
         return;
     }
 
-    detailEl.textContent = `Rendering ${s.points.length} points...`;
+    const meta = [];
+    if (s.last_updated) meta.push(`Last seen: ${new Date(s.last_updated * 1000).toISOString()}`);
+    if (s.site_parent_id) meta.push(`Site ID: ${s.site_parent_id}`);
+    if (s.components && s.components.length) {
+        meta.push("Components:");
+        for (const c of s.components) {
+            meta.push(` - ${c.name}: ${c.functional_status}${c.serial_number ? ` (SN: ${c.serial_number})` : ""}`);
+        }
+    }
+    detailEl.style.display = "block";
+    detailEl.textContent = meta.join("\n") || `Rendering ${s.points.length} points...`;
+
+    detailEl.textContent += `\nRendering ${s.points.length} points...`;
     renderCharts(s, s.points, s.source);
 }
 
