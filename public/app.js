@@ -56,8 +56,8 @@ function refreshColumnLabels() {
     const depthUnit = getUnit("water_level_above_pump", "m");
     const thFlow = document.getElementById("thFlowTotal");
     const thDepth = document.getElementById("thDepthValue");
-    if (thFlow) thFlow.textContent = `Total Flow (${flowUnit})`;
-    if (thDepth) thDepth.textContent = `Water Level 03–05h (${depthUnit})`;
+    if (thFlow) thFlow.textContent = `Total Volume (${flowUnit})`;
+    if (thDepth) thDepth.textContent = `Night Time Water Depth (${depthUnit})`;
 }
 
 // Scoring helper for water-level samples to find the best 03:00–05:00 reading.
@@ -928,7 +928,7 @@ function main() {
     function doExportCSV() {
         if (!allReportRows || !allReportRows.length) { alert("No data to export."); return; }
         const days = el("days").value || 7;
-        let csv = `Source,System ID,Site Name,Total Flow (m3),Water Level 03-05h (m)\n`;
+        let csv = `Source,System ID,Site Name,Total Volume (m3),Night Time Water Depth (m)\n`;
         csv += allReportRows.map(r => {
             const depth = (r.depth === null || r.depth === undefined || Number.isNaN(r.depth))
                 ? ""
