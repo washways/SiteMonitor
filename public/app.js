@@ -60,6 +60,36 @@ function refreshColumnLabels() {
     if (thDepth) thDepth.textContent = `Night Time Water Depth (${depthUnit})`;
 }
 
+// Parse SonSetLink sensor slot arrays into timestamped depth points
+function sslDepthPoints(rows, scale = 0.1) {
+    const pts = [];
+    for (const r of rows) {
+        if (!r.sensor2 || String(r.sensor2).toUpperCase() === "NULL") continue;
+        let arr;
+        try {
+            arr = JSON.parse(r.sensor2);
+        } catch {
+            continue;
+        }
+        if (!Array.isArray(arr) || !arr.length) continue;
+
+        const base = new Date(String(r.timestamp).replace(" ", "T") + "Z").getTime();
+        const slotCount = arr.length;
+        const dayMs = 24 * 3600 * 1000;
+        const slotMs = dayMs / slotCount;
+        const dayStart = base - dayMs; // slots cover prior 24h
+
+        arr.forEach((v, i) => {
+            if (v === null || v === undefined) return;
+            const num = Number(v);
+            if (!Number.isFinite(num) || num >= 255) return; // 255 appears to be no-data
+            const ts = dayStart + (i + 0.5) * slotMs;
+            pts.push({ timestamp_ms: ts, value: num * scale, code: "ssl_depth" });
+        });
+    }
+    return pts;
+}
+
 // Scoring helper for water-level samples to find the best 03:00–05:00 reading.
 function scoreWaterPoint(p) {
     const d = malawiDate(p.timestamp_ms);
@@ -815,11 +845,39 @@ async function renderTable() {
                         sparkData = vals;
                     }
                     stableDepth = pickStableWaterLevel(points);
-            s.waterTrend = waterTrend || [];
+                    s.waterTrend = waterTrend || [];
                 } else if (s.source === "SonSetLink") {
                     totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
                     sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
-                    s.waterTrend = [];
+                    const depthPts = sslDepthPoints(points, 0.1);
+                    if (depthPts.length) {
+                        const byDay = new Map();
+                        for (const p of depthPts) {
+                            const d = malawiDate(p.timestamp_ms);
+                            const dayKey = d.toISOString().slice(0, 10);
+                            if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+                            byDay.get(dayKey).push(p);
+                        }
+                        const daysAsc = Array.from(byDay.keys()).sort();
+                        const daily = [];
+                        for (const day of daysAsc) {
+                            const ranked = byDay.get(day).map(p => ({ p, ...scoreWaterPoint(p) }))
+                                .sort((a, b) => {
+                                    if (a.inWindow !== b.inWindow) return a.inWindow ? -1 : 1;
+                                    if (a.dist !== b.dist) return a.dist - b.dist;
+                                    return b.p.timestamp_ms - a.p.timestamp_ms;
+                                });
+                            if (ranked.length) daily.push(Number(ranked[0].p.value));
+                        }
+                        if (daily.length) {
+                            stableDepth = daily[daily.length - 1];
+                            s.waterTrend = daily;
+                        } else {
+                            s.waterTrend = [];
+                        }
+                    } else {
+                        s.waterTrend = [];
+                    }
                 }
 
                 s.points = points;
