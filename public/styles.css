@@ -234,6 +234,14 @@ main {
   width: 100%;
 }
 
+.map-chart {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 16px;
+  padding: 0 16px 16px 16px;
+  align-items: start;
+}
+
 /* ===========================
    MODAL
    =========================== */
@@ -312,6 +320,22 @@ hr {
 
   #reportTable {
     min-width: 420px;
+  }
+}
+
+@media (max-width: 900px) {
+  .map-chart {
+    display: block;
+    padding: 0;
+  }
+
+  .panel-map {
+    height: 360px;
+  }
+
+  .panel-chart {
+    max-height: 380px;
+    margin-top: 10px;
   }
 }
 

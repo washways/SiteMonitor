@@ -12,7 +12,7 @@ A **static, browser-based dashboard** for monitoring solar-powered and hand-pump
 
 | Feature | Detail |
 |---------|--------|
-| **Dual data sources** | DCP Water API + SonSetLink API |
+| **Dual data sources** | DCP Water API (v2) + SonSetLink API |
 | **Flow Report Table** | Configurable day range (default 7 days) — total flow (m³), sparkline trend, status |
 | **Interactive Map** | Leaflet map with colour-coded markers; click a marker to open site charts |
 | **Dual-axis Site Chart** | Aggregated Flow (m³/h) as blue bars on left axis + Water Level Above Pump (m) as amber line on right axis |
@@ -51,7 +51,7 @@ wash-dashboard/
 **Live site (GitHub Pages):**
 ```
 Browser  →  Cloudflare Worker (wash-proxy.washways1.workers.dev)
-                ├── /dcp/*  →  api-dev.dcp.solar/water/*
+                ├── /dcp/*  →  api.dcp.solar/water/*
                 └── /ssl/*  →  sonsetlink.org/water/technical/*
 ```
 
@@ -66,17 +66,20 @@ The Cloudflare Worker acts as a transparent CORS proxy — it forwards API reque
 
 ## Data Sources
 
-### 1 — DCP Water API
+### 1 — DCP Water API (v2)
 
 | Endpoint | Used for |
 |----------|----------|
-| `GET /v1/wells` | List all wells (name, location, ID) |
-| `GET /v1/wells/{id}/timeseries?parameter=flow` | Hourly aggregated flow (m³/h) |
-| `GET /v1/wells/{id}/timeseries?parameter=water_level_above_pump` | Hourly water level above pump (m) |
+| `GET /v2/wells` | List all wells (name, location, ID, last_seen) |
+| `GET /v2/wells/{id}/timeseries?parameter=flow` | Hourly flow (m³/h) — summed to volume over the selected window |
+| `GET /v2/wells/{id}/timeseries?parameter=water_level_above_pump` | Hourly water level above pump (m) |
+| `GET /v2/sites` | Sites with wells, components, and last_seen |
+| `GET /v2/parameters` | Parameter catalog (labels + units) |
 
 - Authentication: `X-Api-Key` header
-- Dates: ISO-8601 UTC, aligned to midnight (`YYYY-MM-DDT00:00:00Z`)
-- Values: hourly aggregated; `null` means no measurement in that hour
+- Dates: ISO-8601 UTC
+- Values: hourly buckets; `null` means no measurement in that hour
+- Docs: `https://api.dcp.solar/water/openapi.json`
 
 ### 2 — SonSetLink API
 
@@ -97,7 +100,7 @@ The Cloudflare Worker acts as a transparent CORS proxy — it forwards API reque
 1. Open the dashboard and sign in (credentials are shared privately with authorised users)
 2. Click **⚙️ Settings** in the header
 3. Enter:
-   - **DCP API Key** — your key from `api-dev.dcp.solar`
+   - **DCP API Key** — your key for `api.dcp.solar/water` (v2)
    - **SonSetLink User** — your SonSetLink username
    - **SonSetLink Password** — your SonSetLink password
 4. Click **Save & Reload**
@@ -137,6 +140,8 @@ Commit and push after changing. The password is checked client-side using the br
 
 - **DCP sites**: dual-axis Plotly chart — blue bars (flow, left axis) + amber line (water level, right axis)
 - **SonSetLink sites**: line chart of total flow and daily flow
+
+**Depth sampling rationale:** Night-time (03:00–05:00 Malawi time) readings approximate static groundwater levels (minimal pumping) and are downsampled for trends.
 
 ### Controls
 
