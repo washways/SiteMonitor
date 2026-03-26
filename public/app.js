@@ -371,6 +371,9 @@ function renderSparkline(data) {
 function renderDepthSparkline(series) {
     if (!series || series.length < 2) return `<span style="color:#ccc; font-size:0.8em">No Trend</span>`;
 
+    // Normalize to objects with {value,date}
+    const norm = series.map(s => typeof s === "number" ? { value: s, date: "" } : s);
+
     const width = 140;
     const height = 60;
     const padL = 28;
@@ -378,20 +381,20 @@ function renderDepthSparkline(series) {
     const innerW = width - padL - 4;
     const innerH = height - padB - 4;
 
-    const values = series.map(p => Number(p.value));
+    const values = norm.map(p => Number(p.value));
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = (max - min) || 1;
 
-    const step = innerW / (series.length - 1);
-    const pts = series.map((p, i) => {
+    const step = innerW / (norm.length - 1);
+    const pts = norm.map((p, i) => {
         const x = padL + i * step;
         const y = 2 + innerH - ((p.value - min) / range) * innerH;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
     });
 
-    const firstDate = series[0].date || "";
-    const lastDate = series[series.length - 1].date || "";
+    const firstDate = norm[0].date || "";
+    const lastDate = norm[norm.length - 1].date || "";
 
     return `<svg width="${width}" height="${height}" style="background:#fcfcfc; border:1px solid #eee">
         <g stroke="#e5e7eb" stroke-width="1">
@@ -867,10 +870,10 @@ async function renderTable() {
                                     if (a.dist !== b.dist) return a.dist - b.dist;
                                     return b.p.timestamp_ms - a.p.timestamp_ms;
                                 });
-                            if (ranked.length) daily.push(Number(ranked[0].p.value));
+                            if (ranked.length) daily.push({ date: day, value: Number(ranked[0].p.value) });
                         }
                         if (daily.length) {
-                            stableDepth = daily[daily.length - 1];
+                            stableDepth = daily[daily.length - 1].value;
                             s.waterTrend = daily;
                         } else {
                             s.waterTrend = [];
