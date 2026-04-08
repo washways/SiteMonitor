@@ -127,33 +127,6 @@ function aggregateFlowToDailyM3(flowPoints) {
     return totalM3;
 }
 
-// Aggregate energy readings to daily average (for solar output, battery, etc.)
-// Input: array of {code, value, timestamp_ms}
-// Output: average daily value
-function aggregateEnergyToDailyAverage(energyPoints) {
-    if (!energyPoints || energyPoints.length === 0) return null;
-    
-    // Group by calendar day in Malawi timezone
-    const byDay = new Map();
-    for (const p of energyPoints) {
-        const d = malawiDate(p.timestamp_ms);
-        const dayKey = d.toISOString().slice(0, 10);
-        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
-        byDay.get(dayKey).push(p);
-    }
-    
-    // Calculate average per day, then overall average
-    let totalDays = 0;
-    let sumAvgs = 0;
-    for (const [day, points] of byDay) {
-        const dayAvg = points.reduce((sum, p) => sum + (Number(p.value) || 0), 0) / points.length;
-        sumAvgs += dayAvg;
-        totalDays++;
-    }
-    
-    return totalDays > 0 ? sumAvgs / totalDays : null;
-}
-
 // ====================== SETTINGS / AUTH (OPTIONAL OVERRIDE) ======================"
 // On the live site, the Cloudflare Worker injects default API credentials.
 // Users can optionally enter their own credentials here to override the defaults.
@@ -364,24 +337,16 @@ async function dcpSeries(headers, wellId, startIso, endIso) {
         }
     };
 
-    // Try to fetch flow, water level, and common energy parameters
-    // Energy parameters may not be available for all wells
-    const energyParams = ["solar_output", "battery_voltage", "battery_charge", "pv_power"];
+    // Try to fetch flow and water level only (DCP API only supports these)
     const promises = [
         fetchParam("flow"),
-        fetchParam("water_level_above_pump"),
-        ...energyParams.map(p => fetchParam(p))
+        fetchParam("water_level_above_pump")
     ];
     
-    const [flowPts, wlPts, ...energyPts] = await Promise.all(promises);
+    const [flowPts, wlPts] = await Promise.all(promises);
     
     // Combine all available data points
     const allPts = [...flowPts, ...wlPts];
-    for (let i = 0; i < energyParams.length; i++) {
-        if (energyPts[i] && energyPts[i].length > 0) {
-            allPts.push(...energyPts[i]);
-        }
-    }
     
     return allPts;
 }
@@ -929,15 +894,21 @@ async function renderTable() {
                     }
                     stableDepth = pickStableWaterLevel(points);
                     s.waterTrend = waterTrend || [];
-                    
-                    // Extract energy data (solar_output if available)
-                    const solarPts = points.filter(p => p.code === "solar_output").sort((a, b) => a.timestamp_ms - b.timestamp_ms);
-                    if (solarPts.length > 0) {
-                        avgSolarKwh = aggregateEnergyToDailyAverage(solarPts);
-                    }
                 } else if (s.source === "SonSetLink") {
+                    // Group SonSetLink daily readings by calendar day and sum flow per day
+                    const flowByDay = new Map();
+                    for (const p of points) {
+                        const d = malawiDate(p.timestamp_ms);
+                        const dayKey = d.toISOString().slice(0, 10);
+                        const flowVal = Number(p.deflow || p.flow1 || 0);
+                        if (!flowByDay.has(dayKey)) flowByDay.set(dayKey, []);
+                        flowByDay.get(dayKey).push(flowVal);
+                    }
+                    // Calculate daily totals for sparkline
+                    const daysAsc = Array.from(flowByDay.keys()).sort();
+                    sparkData = daysAsc.map(day => flowByDay.get(day).reduce((acc, v) => acc + v, 0));
+                    // Calculate total flow from all readings
                     totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
-                    sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
                     const depthPts = sslDepthPoints(points, 0.1);
                     if (depthPts.length) {
                         const byDay = new Map();
@@ -1001,9 +972,6 @@ async function renderTable() {
         const depthTxt = (s.waterDepth === null || s.waterDepth === undefined || Number.isNaN(s.waterDepth))
             ? "&mdash;"
             : (Math.round(Number(s.waterDepth) * 100) / 100).toFixed(2);
-        const energyTxt = (s.avgSolarKwh === null || s.avgSolarKwh === undefined || Number.isNaN(s.avgSolarKwh))
-            ? "&mdash;"
-            : (Math.round(Number(s.avgSolarKwh) * 100) / 100).toFixed(2);
 
         tr.innerHTML = `
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.source}</td>
@@ -1011,7 +979,6 @@ async function renderTable() {
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.site_id}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${Math.round(s.totalFlow * 100) / 100}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${flowSpark}</td>
-            <td style="padding:8px; border-bottom:1px solid #ddd;">${energyTxt}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${depthTxt}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${wlSpark}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd; color:${color}">${s.status}</td>
@@ -1072,6 +1039,38 @@ function main() {
     initMap();
     if (el("btnViewMap")) el("btnViewMap").style.display = 'none';
     if (el("btnViewTable")) el("btnViewTable").style.display = 'none';
+    
+    // Initialize date range picker with defaults
+    const endDate = new Date();
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - 7); // Default 7 days
+    
+    if (el("dateStart")) el("dateStart").valueAsDate = startDate;
+    if (el("dateEnd")) el("dateEnd").valueAsDate = endDate;
+    
+    // Sync date range and days input
+    if (el("days")) {
+        el("days").onchange = () => {
+            const end = new Date();
+            const start = new Date(end);
+            start.setDate(start.getDate() - parseInt(el("days").value || 7));
+            if (el("dateStart")) el("dateStart").valueAsDate = start;
+            if (el("dateEnd")) el("dateEnd").valueAsDate = end;
+        };
+    }
+    if (el("dateStart") || el("dateEnd")) {
+        const updateDaysFromDates = () => {
+            const start = el("dateStart")?.valueAsDate;
+            const end = el("dateEnd")?.valueAsDate;
+            if (start && end) {
+                const days = Math.ceil((end - start) / (1000 * 60 * 60 * 24));
+                if (el("days")) el("days").value = Math.max(1, days);
+            }
+        };
+        if (el("dateStart")) el("dateStart").onchange = updateDaysFromDates;
+        if (el("dateEnd")) el("dateEnd").onchange = updateDaysFromDates;
+    }
+    
     el("reload").onclick = loadSites;
     // Hide old series buttons as they are now global settings
     if (el("loadSeries")) el("loadSeries").style.display = 'none';

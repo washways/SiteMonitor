@@ -93,6 +93,11 @@
             WASH Dashboard
         </h1>
         <div class="controls">
+            <label>Date Range:
+                <input type="date" id="dateStart" />
+                <span>to</span>
+                <input type="date" id="dateEnd" />
+            </label>
             <label>Days <input id="days" type="number" min="1" max="365" value="7" /></label>
             <button id="reload" class="btn-primary">&#x25B6; Load</button>
             <label><input id="malawiOnly" type="checkbox" checked /> Malawi only</label>
@@ -122,7 +127,6 @@
                             <th>ID</th>
                             <th id="thFlowTotal">Daily Total Flow (m&#xB3;/day)</th>
                             <th>Flow Trend</th>
-                            <th id="thEnergyCol">Avg Solar (kWh/day)</th>
                             <th id="thDepthValue">Night Time Water Depth (m)</th>
                             <th>Depth Trend</th>
                             <th>Status</th>

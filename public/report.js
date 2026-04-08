@@ -79,31 +79,6 @@ function aggregateFlowToDailyM3(flowPoints) {
     return totalM3;
 }
 
-// Aggregate energy readings to daily average
-function aggregateEnergyToDailyAverage(energyPoints) {
-    if (!energyPoints || energyPoints.length === 0) return null;
-    
-    // Group by calendar day in Malawi timezone
-    const byDay = new Map();
-    for (const p of energyPoints) {
-        const d = malawiDate(p.timestamp_ms);
-        const dayKey = d.toISOString().slice(0, 10);
-        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
-        byDay.get(dayKey).push(p);
-    }
-    
-    // Calculate average per day, then overall average
-    let totalDays = 0;
-    let sumAvgs = 0;
-    for (const [day, points] of byDay) {
-        const dayAvg = points.reduce((sum, p) => sum + (Number(p.value) || 0), 0) / points.length;
-        sumAvgs += dayAvg;
-        totalDays++;
-    }
-    
-    return totalDays > 0 ? sumAvgs / totalDays : null;
-}
-
 // --- SONSETLINK ---
 async function sslSites(user, pass) {
     const base = "/api/ssl/sites.json.php";
