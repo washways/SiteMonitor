@@ -896,19 +896,27 @@ async function renderTable() {
                     s.waterTrend = waterTrend || [];
                 } else if (s.source === "SonSetLink") {
                     // Group SonSetLink daily readings by calendar day and sum flow per day
+                    // SonSetLink data has 'pulse' (flow) and 'timestamp' (string) fields
                     const flowByDay = new Map();
                     for (const p of points) {
-                        const d = malawiDate(p.timestamp_ms);
-                        const dayKey = d.toISOString().slice(0, 10);
-                        const flowVal = Number(p.deflow || p.flow1 || 0);
-                        if (!flowByDay.has(dayKey)) flowByDay.set(dayKey, []);
-                        flowByDay.get(dayKey).push(flowVal);
+                        try {
+                            const ts_ms = new Date(p.timestamp).getTime();
+                            if (Number.isNaN(ts_ms)) continue; // Skip invalid timestamps
+                            const d = malawiDate(ts_ms);
+                            const dayKey = d.toISOString().slice(0, 10);
+                            const flowVal = Number(p.pulse || p.deflow || p.flow1 || 0);
+                            if (!flowByDay.has(dayKey)) flowByDay.set(dayKey, []);
+                            flowByDay.get(dayKey).push(flowVal);
+                        } catch (e) {
+                            console.warn("Error processing SonSetLink point:", p, e);
+                            continue;
+                        }
                     }
                     // Calculate daily totals for sparkline
                     const daysAsc = Array.from(flowByDay.keys()).sort();
                     sparkData = daysAsc.map(day => flowByDay.get(day).reduce((acc, v) => acc + v, 0));
                     // Calculate total flow from all readings
-                    totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
+                    totalFlow = points.reduce((acc, p) => acc + Number(p.pulse || p.deflow || p.flow1 || 0), 0);
                     const depthPts = sslDepthPoints(points, 0.1);
                     if (depthPts.length) {
                         const byDay = new Map();
