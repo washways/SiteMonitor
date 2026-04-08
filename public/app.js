@@ -56,7 +56,7 @@ function refreshColumnLabels() {
     const depthUnit = getUnit("water_level_above_pump", "m");
     const thFlow = document.getElementById("thFlowTotal");
     const thDepth = document.getElementById("thDepthValue");
-    if (thFlow) thFlow.textContent = `Total Volume (${flowUnit})`;
+    if (thFlow) thFlow.textContent = `Daily Total Flow (${flowUnit}/day)`;
     if (thDepth) thDepth.textContent = `Night Time Water Depth (${depthUnit})`;
 }
 
@@ -102,7 +102,59 @@ function scoreWaterPoint(p) {
     return { dist, inWindow, mins };
 }
 
-// ====================== SETTINGS / AUTH (OPTIONAL OVERRIDE) ======================
+// Aggregate hourly flow rates (m³/h) to daily totals (m³/day) using Malawi timezone (UTC+2)
+// Input: array of {code, value, timestamp_ms} for code="flow"
+// Output: total m³ for the day period, organized by date
+function aggregateFlowToDailyM3(flowPoints) {
+    if (!flowPoints || flowPoints.length === 0) return 0;
+    
+    // Group by calendar day in Malawi timezone
+    const byDay = new Map();
+    for (const p of flowPoints) {
+        const d = malawiDate(p.timestamp_ms);
+        const dayKey = d.toISOString().slice(0, 10); // YYYY-MM-DD in Malawi time
+        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+        byDay.get(dayKey).push(p);
+    }
+    
+    // For each day, sum the hourly values (each hourly rate × 1 hour = m³ per hour)
+    let totalM3 = 0;
+    for (const [day, points] of byDay) {
+        const dayTotal = points.reduce((sum, p) => sum + (Number(p.value) || 0), 0);
+        totalM3 += dayTotal;
+    }
+    
+    return totalM3;
+}
+
+// Aggregate energy readings to daily average (for solar output, battery, etc.)
+// Input: array of {code, value, timestamp_ms}
+// Output: average daily value
+function aggregateEnergyToDailyAverage(energyPoints) {
+    if (!energyPoints || energyPoints.length === 0) return null;
+    
+    // Group by calendar day in Malawi timezone
+    const byDay = new Map();
+    for (const p of energyPoints) {
+        const d = malawiDate(p.timestamp_ms);
+        const dayKey = d.toISOString().slice(0, 10);
+        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+        byDay.get(dayKey).push(p);
+    }
+    
+    // Calculate average per day, then overall average
+    let totalDays = 0;
+    let sumAvgs = 0;
+    for (const [day, points] of byDay) {
+        const dayAvg = points.reduce((sum, p) => sum + (Number(p.value) || 0), 0) / points.length;
+        sumAvgs += dayAvg;
+        totalDays++;
+    }
+    
+    return totalDays > 0 ? sumAvgs / totalDays : null;
+}
+
+// ====================== SETTINGS / AUTH (OPTIONAL OVERRIDE) ======================"
 // On the live site, the Cloudflare Worker injects default API credentials.
 // Users can optionally enter their own credentials here to override the defaults.
 const settingsModal = el("settingsModal");
@@ -312,12 +364,26 @@ async function dcpSeries(headers, wellId, startIso, endIso) {
         }
     };
 
-    const [flowPts, wlPts] = await Promise.all([
+    // Try to fetch flow, water level, and common energy parameters
+    // Energy parameters may not be available for all wells
+    const energyParams = ["solar_output", "battery_voltage", "battery_charge", "pv_power"];
+    const promises = [
         fetchParam("flow"),
-        fetchParam("water_level_above_pump")
-    ]);
-
-    return [...flowPts, ...wlPts];
+        fetchParam("water_level_above_pump"),
+        ...energyParams.map(p => fetchParam(p))
+    ];
+    
+    const [flowPts, wlPts, ...energyPts] = await Promise.all(promises);
+    
+    // Combine all available data points
+    const allPts = [...flowPts, ...wlPts];
+    for (let i = 0; i < energyParams.length; i++) {
+        if (energyPts[i] && energyPts[i].length > 0) {
+            allPts.push(...energyPts[i]);
+        }
+    }
+    
+    return allPts;
 }
 
 // Water-level only series (used for 6-month trend sparkline).
@@ -838,17 +904,37 @@ async function renderTable() {
                 let totalFlow = 0;
                 let sparkData = [];
                 let stableDepth = null;
+                let avgSolarKwh = null;
 
                 if (s.source === "DCP") {
                     // filter just flow for sparklines
                     const flowPts = points.filter(p => p.code === "flow").sort((a, b) => a.timestamp_ms - b.timestamp_ms);
                     if (flowPts.length > 0) {
-                        const vals = flowPts.map(p => Number(p.value) || 0);
-                        totalFlow = vals.reduce((acc, val) => acc + val, 0); // periodic flow is aggregated via sum
-                        sparkData = vals;
+                        // Aggregate hourly m³/h rates to daily totals (m³/day)
+                        totalFlow = aggregateFlowToDailyM3(flowPts);
+                        
+                        // Generate sparkline data: daily averages for visualization
+                        const byDay = new Map();
+                        for (const p of flowPts) {
+                            const d = malawiDate(p.timestamp_ms);
+                            const dayKey = d.toISOString().slice(0, 10);
+                            if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+                            byDay.get(dayKey).push(Number(p.value) || 0);
+                        }
+                        const daysAsc = Array.from(byDay.keys()).sort();
+                        sparkData = daysAsc.map(day => {
+                            const dayVals = byDay.get(day);
+                            return dayVals.reduce((sum, v) => sum + v, 0); // daily total m³
+                        });
                     }
                     stableDepth = pickStableWaterLevel(points);
                     s.waterTrend = waterTrend || [];
+                    
+                    // Extract energy data (solar_output if available)
+                    const solarPts = points.filter(p => p.code === "solar_output").sort((a, b) => a.timestamp_ms - b.timestamp_ms);
+                    if (solarPts.length > 0) {
+                        avgSolarKwh = aggregateEnergyToDailyAverage(solarPts);
+                    }
                 } else if (s.source === "SonSetLink") {
                     totalFlow = points.reduce((acc, p) => acc + Number(p.deflow || p.flow1 || 0), 0);
                     sparkData = points.map(p => Number(p.deflow || p.flow1 || 0)).reverse(); // Assuming descending order from SSL, reverse to ascending
@@ -887,6 +973,7 @@ async function renderTable() {
                 s.totalFlow = totalFlow;
                 s.sparkData = sparkData;
                 s.waterDepth = stableDepth;
+                s.avgSolarKwh = avgSolarKwh;
                 s.status = points.length > 0 ? "OK" : "No Data";
                 console.log(`Site ${s.site_name} (${s.source}): Loaded ${points.length} pts. Flow=${totalFlow}`);
             } catch (err) {
@@ -895,6 +982,7 @@ async function renderTable() {
                 s.totalFlow = 0;
                 s.sparkData = [];
                 s.waterDepth = null;
+                s.avgSolarKwh = null;
                 s.waterTrend = [];
                 s.status = "Error";
             }
@@ -913,6 +1001,9 @@ async function renderTable() {
         const depthTxt = (s.waterDepth === null || s.waterDepth === undefined || Number.isNaN(s.waterDepth))
             ? "&mdash;"
             : (Math.round(Number(s.waterDepth) * 100) / 100).toFixed(2);
+        const energyTxt = (s.avgSolarKwh === null || s.avgSolarKwh === undefined || Number.isNaN(s.avgSolarKwh))
+            ? "&mdash;"
+            : (Math.round(Number(s.avgSolarKwh) * 100) / 100).toFixed(2);
 
         tr.innerHTML = `
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.source}</td>
@@ -920,6 +1011,7 @@ async function renderTable() {
             <td style="padding:8px; border-bottom:1px solid #ddd;">${s.site_id}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${Math.round(s.totalFlow * 100) / 100}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${flowSpark}</td>
+            <td style="padding:8px; border-bottom:1px solid #ddd;">${energyTxt}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${depthTxt}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd;">${wlSpark}</td>
             <td style="padding:8px; border-bottom:1px solid #ddd; color:${color}">${s.status}</td>

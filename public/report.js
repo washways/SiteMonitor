@@ -50,6 +50,60 @@ function inMalawiBBox(lat, lon) {
     return la >= MALAWI_BBOX.latMin && la <= MALAWI_BBOX.latMax && lo >= MALAWI_BBOX.lonMin && lo <= MALAWI_BBOX.lonMax;
 }
 
+// Malawi timezone offset
+const MALAWI_TZ_OFFSET_MIN = 120; // UTC+2
+function malawiDate(tsMs) {
+    return new Date(tsMs + MALAWI_TZ_OFFSET_MIN * 60 * 1000);
+}
+
+// Aggregate hourly flow rates (m³/h) to daily totals (m³/day) using Malawi timezone (UTC+2)
+function aggregateFlowToDailyM3(flowPoints) {
+    if (!flowPoints || flowPoints.length === 0) return 0;
+    
+    // Group by calendar day in Malawi timezone
+    const byDay = new Map();
+    for (const p of flowPoints) {
+        const d = malawiDate(p.timestamp_ms);
+        const dayKey = d.toISOString().slice(0, 10);
+        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+        byDay.get(dayKey).push(p);
+    }
+    
+    // Sum hourly values per day
+    let totalM3 = 0;
+    for (const [day, points] of byDay) {
+        const dayTotal = points.reduce((sum, p) => sum + (Number(p.value) || 0), 0);
+        totalM3 += dayTotal;
+    }
+    
+    return totalM3;
+}
+
+// Aggregate energy readings to daily average
+function aggregateEnergyToDailyAverage(energyPoints) {
+    if (!energyPoints || energyPoints.length === 0) return null;
+    
+    // Group by calendar day in Malawi timezone
+    const byDay = new Map();
+    for (const p of energyPoints) {
+        const d = malawiDate(p.timestamp_ms);
+        const dayKey = d.toISOString().slice(0, 10);
+        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+        byDay.get(dayKey).push(p);
+    }
+    
+    // Calculate average per day, then overall average
+    let totalDays = 0;
+    let sumAvgs = 0;
+    for (const [day, points] of byDay) {
+        const dayAvg = points.reduce((sum, p) => sum + (Number(p.value) || 0), 0) / points.length;
+        sumAvgs += dayAvg;
+        totalDays++;
+    }
+    
+    return totalDays > 0 ? sumAvgs / totalDays : null;
+}
+
 // --- SONSETLINK ---
 async function sslSites(user, pass) {
     const base = "/api/ssl/sites.json.php";
@@ -241,16 +295,29 @@ async function generateReport() {
 
             if (points.length > 0) {
                 // We have actual flow data
-                if (site.source === "VRM") {
-                    const vals = points.map(p => p.pulse);
-                    if (vals.length > 0) {
-                        const min = Math.min(...vals);
-                        const max = Math.max(...vals);
-                        totalFlow = max - min;
-                        sparkData = vals;
+                if (site.source === "DCP") {
+                    // Convert hourly rates to daily totals for DCP
+                    const flowMs = points.map(p => ({
+                        timestamp_ms: new Date(p.timestamp).getTime(),
+                        value: p.pulse
+                    }));
+                    totalFlow = aggregateFlowToDailyM3(flowMs);
+                    
+                    // Generate daily sparkline data
+                    const byDay = new Map();
+                    for (const p of flowMs) {
+                        const d = malawiDate(p.timestamp_ms);
+                        const dayKey = d.toISOString().slice(0, 10);
+                        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
+                        byDay.get(dayKey).push(Number(p.value) || 0);
                     }
+                    const daysAsc = Array.from(byDay.keys()).sort();
+                    sparkData = daysAsc.map(day => {
+                        const dayVals = byDay.get(day);
+                        return dayVals.reduce((sum, v) => sum + v, 0);
+                    });
                 } else {
-                    // SSL
+                    // SSL - already daily totals
                     totalFlow = points.reduce((acc, p) => acc + p.pulse, 0);
                     sparkData = points.map(p => p.pulse);
                 }
