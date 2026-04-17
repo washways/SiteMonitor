@@ -1,5 +1,13 @@
 
-const DCP_BASE = "/api/dcp";
+// On live site (washways.org), use the Cloudflare Worker proxy
+// On localhost, use direct API paths (or proxy with ?proxy=1)
+const IS_LOCAL = !!location.hostname.match(/^(localhost|127\.0\.0\.1)$/);
+const FORCE_PROXY = window.location.search.includes("proxy=1");
+const USE_PROXY = !IS_LOCAL || FORCE_PROXY;
+const PROXY_BASE = "https://wash-proxy.washways1.workers.dev";
+
+const DCP_BASE = USE_PROXY ? `${PROXY_BASE}/dcp` : "https://api-dev.dcp.solar/water";
+const SSL_BASE = USE_PROXY ? `${PROXY_BASE}/ssl` : "https://sonsetlink.org/water/technical";
 
 const el = (id) => document.getElementById(id);
 const logEl = el("statusLog");
@@ -97,8 +105,7 @@ function aggregateFlowToDailyM3(flowPoints) {
 
 // --- SONSETLINK ---
 async function sslSites(user, pass) {
-    const base = "/api/ssl/sites.json.php";
-    const url = new URL(base, window.location.origin);
+    const url = new URL(SSL_BASE + "/sites.json.php");
     url.searchParams.set("login", user);
     url.searchParams.set("password", pass);
 
@@ -131,7 +138,7 @@ async function sslSeries(site, startIso, endIso) {
     const endpoints = ["usage.json.php"]; // usage1_msg.json.php returned 404 in tests
 
     for (const ep of endpoints) {
-        const url = new URL(`/api/ssl/${ep}`, window.location.origin);
+        const url = new URL(SSL_BASE + "/" + ep);
         url.searchParams.set("login", sslUser);
         url.searchParams.set("password", sslPass);
         url.searchParams.set("site", site.site_id);
