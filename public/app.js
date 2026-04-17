@@ -175,6 +175,16 @@ saveSettings.onclick = () => {
     localStorage.setItem("dcp_token", clean);
     localStorage.setItem("ssl_user", el("sslUser").value.trim());
     localStorage.setItem("ssl_pass", el("sslPass").value.trim());
+    
+    // Also save to config.json for persistence across sessions
+    fetch("config.json").then(r => r.ok ? r.json() : {}).then(cfg => {
+        cfg.dcp_token = clean;
+        cfg.ssl_user = el("sslUser").value.trim();
+        cfg.ssl_pass = el("sslPass").value.trim();
+        // Try to save back to config.json (may fail due to permissions, but that's OK)
+        fetch("config.json", { method: "POST", body: JSON.stringify(cfg), headers: { "Content-Type": "application/json" } }).catch(() => {});
+    }).catch(() => {});
+    
     settingsModal.style.display = "none";
     loadSites(); // Reload with new keys
 };

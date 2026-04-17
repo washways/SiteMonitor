@@ -15,12 +15,28 @@ function log(msg) {
 
 // ====================== AUTH & CONFIG ======================
 
-function getKeys() {
-    return {
-        dcpToken: (localStorage.getItem("dcp_token") || "").trim(),
-        sslUser: (localStorage.getItem("ssl_user") || "").trim(),
-        sslPass: (localStorage.getItem("ssl_pass") || "").trim()
-    };
+async function getKeys() {
+    // Try localStorage first
+    let dcpToken = (localStorage.getItem("dcp_token") || "").trim();
+    let sslUser = (localStorage.getItem("ssl_user") || "").trim();
+    let sslPass = (localStorage.getItem("ssl_pass") || "").trim();
+    
+    // If localStorage is empty, try loading from config.json
+    if (!dcpToken && !sslUser && !sslPass) {
+        try {
+            const res = await fetch("config.json");
+            if (res.ok) {
+                const cfg = await res.json();
+                dcpToken = (cfg.dcp_token || "").trim();
+                sslUser = (cfg.ssl_user || "").trim();
+                sslPass = (cfg.ssl_pass || "").trim();
+            }
+        } catch (e) {
+            console.warn("Failed to load config.json:", e.message);
+        }
+    }
+    
+    return { dcpToken, sslUser, sslPass };
 }
 
 // ====================== API HELPERS ======================
@@ -106,7 +122,7 @@ async function sslSites(user, pass) {
 }
 
 async function sslSeries(site, startIso, endIso) {
-    const { sslUser, sslPass } = getKeys();
+    const { sslUser, sslPass } = await getKeys();
     // Need YYYY-MM-DD HH:MM:SS format
     const format = (dStr) => dStr.replace("T", " ").slice(0, 19);
 
@@ -210,7 +226,7 @@ async function generateReport() {
 
     log(`Starting report from ${startStr} to ${endStr}...`);
 
-    const { dcpToken, sslUser, sslPass } = getKeys();
+    const { dcpToken, sslUser, sslPass } = await getKeys();
     
     // DEBUG: Log what we retrieved from localStorage
     const hasSSL = !!(sslUser && sslPass);
