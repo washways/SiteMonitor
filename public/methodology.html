@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>SiteMonitor Methodology</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body {
+            font-family: Inter, Segoe UI, Arial, sans-serif;
+            background: #f8fafc;
+            color: #0f172a;
+            margin: 0;
+            line-height: 1.65;
+        }
+        .wrap {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 28px 18px 48px;
+        }
+        .hero {
+            background: linear-gradient(135deg, #0f2744 0%, #164e8a 55%, #0ea5e9 100%);
+            color: #fff;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 10px 30px rgba(15, 39, 68, 0.22);
+            margin-bottom: 22px;
+        }
+        .hero h1 {
+            margin: 0 0 10px;
+            font-size: 2rem;
+        }
+        .hero p {
+            margin: 0;
+            max-width: 900px;
+            font-size: 1.02rem;
+        }
+        .nav-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+        .nav-links a {
+            display: inline-block;
+            padding: 8px 14px;
+            border-radius: 8px;
+            background: rgba(255,255,255,0.14);
+            color: #fff;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            margin: 20px 0 24px;
+        }
+        .card, .panel {
+            background: #fff;
+            border-radius: 14px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, 0.08);
+        }
+        .card {
+            padding: 16px;
+            border-left: 5px solid #2563eb;
+        }
+        .card h3 {
+            margin: 0 0 8px;
+            font-size: 1rem;
+        }
+        .panel {
+            padding: 22px;
+            margin-bottom: 18px;
+        }
+        .panel h2 {
+            margin-top: 0;
+            color: #123a63;
+        }
+        .panel h3 {
+            color: #1d4d7a;
+            margin-bottom: 8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            overflow: hidden;
+            border-radius: 10px;
+        }
+        th, td {
+            border: 1px solid #e2e8f0;
+            padding: 10px 12px;
+            text-align: left;
+            vertical-align: top;
+        }
+        th {
+            background: #eff6ff;
+        }
+        .lead {
+            font-size: 1.05rem;
+            color: #334155;
+        }
+        .highlight {
+            background: #eff6ff;
+            border-left: 4px solid #2563eb;
+            padding: 12px 14px;
+            border-radius: 8px;
+            margin: 12px 0;
+        }
+        ul, ol {
+            padding-left: 22px;
+        }
+        .small {
+            color: #64748b;
+            font-size: 0.95rem;
+        }
+        @media (max-width: 720px) {
+            .hero h1 { font-size: 1.6rem; }
+            .wrap { padding: 16px 12px 32px; }
+            .panel { padding: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="wrap">
+        <section class="hero">
+            <h1>Remote Monitoring Methodology</h1>
+            <p>This page explains how SiteMonitor uses flow rate, groundwater depth, drawdown, pumping duration, pumped volume, and specific capacity to turn raw telemetry into practical borehole performance intelligence. The aim is to help teams identify failing assets early, prioritise maintenance, track trends over time, and support evidence-based WASH management.</p>
+            <div class="nav-links">
+                <a href="index.html">Dashboard</a>
+                <a href="pulse-report.html">Event Analysis</a>
+                <a href="methodology.md" target="_blank">Markdown Source</a>
+            </div>
+        </section>
+
+        <div class="grid">
+            <div class="card">
+                <h3>Flow rate</h3>
+                <p>Shows how much water the system is producing. Falling or highly erratic flow can indicate pump wear, reduced demand, power issues, or aquifer stress.</p>
+            </div>
+            <div class="card">
+                <h3>Water level above pump</h3>
+                <p>Shows the groundwater position relative to the pump. Lower readings during pumping generally mean stronger drawdown and greater stress on the source.</p>
+            </div>
+            <div class="card">
+                <h3>Specific capacity</h3>
+                <p>Compares pumping rate to drawdown. It is a practical efficiency indicator for judging how easily a borehole delivers water.</p>
+            </div>
+            <div class="card">
+                <h3>Remote value</h3>
+                <p>Allows teams to detect problems without waiting for site visits, improving response speed, planning, and accountability.</p>
+            </div>
+        </div>
+
+        <section class="panel">
+            <h2>Why remote monitoring matters</h2>
+            <p class="lead">Remote monitoring shifts borehole management from reactive repair to proactive performance tracking. Instead of waiting for a community complaint or a failed visit, the monitoring team can see how each site is behaving day by day and event by event.</p>
+            <ul>
+                <li>Detect underperforming pumps earlier</li>
+                <li>See whether declining water production is linked to mechanical issues or groundwater stress</li>
+                <li>Track service continuity and availability across many sites at once</li>
+                <li>Prioritise maintenance teams based on evidence rather than guesswork</li>
+                <li>Build a performance history for donors, operators, and local managers</li>
+                <li>Assess whether interventions improve borehole efficiency over time</li>
+            </ul>
+            <div class="highlight">
+                Good remote monitoring does not just show whether a pump is on. It helps explain how the source is responding while the pump is operating and whether that response is improving or deteriorating.
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>What the different readings mean</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Reading</th>
+                        <th>What it represents</th>
+                        <th>How to interpret it</th>
+                        <th>Why it matters operationally</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>Flow rate</strong></td>
+                        <td>Instantaneous or hourly pumping output</td>
+                        <td>Higher values mean more discharge. Sharp drops may indicate pump, power, blockage, or source issues.</td>
+                        <td>Helps confirm whether a borehole is producing enough water for demand.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Total volume</strong></td>
+                        <td>Total water abstracted over a period or event</td>
+                        <td>High totals suggest strong use or long pumping periods. Low totals may indicate outage, low demand, or reduced capacity.</td>
+                        <td>Useful for service reporting and asset utilisation monitoring.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Water level above pump</strong></td>
+                        <td>Groundwater level relative to the pump intake reference</td>
+                        <td>When this value falls during pumping, the aquifer is being drawn down.</td>
+                        <td>Shows how strongly the source responds to pumping.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Drawdown</strong></td>
+                        <td>Difference between the start and end water level during an event</td>
+                        <td>Large drawdown means the borehole needs more level change to sustain pumping.</td>
+                        <td>Helps identify stress, inefficiency, or possible deterioration.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Maximum drawdown</strong></td>
+                        <td>Worst water-level decline reached within an event</td>
+                        <td>Higher values indicate the strongest stress during pumping, even if the final reading recovers slightly.</td>
+                        <td>Important for risk screening and identifying extreme operating conditions.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Specific capacity</strong></td>
+                        <td>Flow rate divided by drawdown</td>
+                        <td>Higher values usually reflect better borehole efficiency. Falling values can be a warning sign.</td>
+                        <td>Excellent for comparing boreholes and tracking performance changes over time.</td>
+                    </tr>
+                    <tr>
+                        <td><strong>Recovery</strong></td>
+                        <td>How the water level rebounds after pumping</td>
+                        <td>Slow recovery may suggest aquifer stress or impaired performance.</td>
+                        <td>Supports maintenance prioritisation and longer-term source assessment.</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section class="panel">
+            <h2>Methodological approach used in SiteMonitor</h2>
+            <h3>1. Collect telemetry</h3>
+            <p>The system reads hourly monitoring data from the remote telemetry platforms, primarily the DCP Water API for event-based analysis. These data provide the time-stamped records needed to evaluate pumping behaviour and groundwater response.</p>
+
+            <h3>2. Detect pumping events</h3>
+            <p>A new event begins when flow rises above the operational threshold of 0.1 m³/h. The event continues while pumping remains above that threshold and closes once flow drops back to zero or near-zero.</p>
+
+            <h3>3. Record start conditions</h3>
+            <p>At the beginning of each event, the routine stores the first valid water-level reading. This becomes the reference condition against which the event drawdown is measured.</p>
+
+            <h3>4. Track changes through the event</h3>
+            <p>While the event is open, the algorithm accumulates volume, tracks duration, saves the latest valid flow reading, and identifies the lowest groundwater level reached during pumping.</p>
+
+            <h3>5. Calculate performance metrics</h3>
+            <p>When the event closes, SiteMonitor computes event duration, total pumped volume, end water level, drawdown, maximum drawdown, and specific capacity. These values are then presented in tables and borehole summary views.</p>
+        </section>
+
+        <section class="panel">
+            <h2>How specific capacity is used</h2>
+            <p class="lead">Specific capacity is an operational efficiency indicator. It answers a practical question: how much water is being produced for each metre of groundwater drawdown?</p>
+            <div class="highlight">
+                Specific capacity = final event flow ÷ event drawdown
+            </div>
+            <p>Although this is not a substitute for a formal pumping test, it is extremely valuable for remote operational screening because it allows consistent comparison:</p>
+            <ul>
+                <li>between one event and the next for the same borehole</li>
+                <li>between boreholes in the same programme</li>
+                <li>before and after maintenance or rehabilitation</li>
+                <li>between wet- and dry-season performance</li>
+            </ul>
+        </section>
+
+        <section class="panel">
+            <h2>How remote monitoring improves management</h2>
+            <ol>
+                <li><strong>Earlier warning:</strong> abnormal drops in flow or worsening drawdown can be spotted before full failure occurs.</li>
+                <li><strong>Better maintenance targeting:</strong> technicians can be sent first to the sites showing the strongest evidence of deterioration.</li>
+                <li><strong>Reduced travel waste:</strong> site visits can be prioritised using data rather than fixed schedules alone.</li>
+                <li><strong>Clearer reporting:</strong> project managers can show evidence of uptime, use, and performance trends.</li>
+                <li><strong>Asset learning:</strong> repeated event analysis builds a history that helps distinguish one-off anomalies from real long-term decline.</li>
+                <li><strong>Improved sustainability oversight:</strong> persistent deep drawdown or poor recovery can support decisions about abstraction pressure and source protection.</li>
+            </ol>
+        </section>
+
+        <section class="panel">
+            <h2>Quality control and interpretation notes</h2>
+            <p>The system keeps flagged events visible so that users can see the full operational context. Missing levels, very small drawdown, irregular timestamps, or end-of-window events may reduce confidence in the final efficiency estimate.</p>
+            <p class="small">These outputs are intended for operational monitoring, screening, and trend detection. They support decision-making but do not replace a dedicated hydrogeological test programme.</p>
+        </section>
+    </div>
+</body>
+</html>

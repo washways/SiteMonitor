@@ -2,7 +2,9 @@
 
 ## Purpose
 
-This document explains how the WASH SiteMonitor dashboard collects, processes, and presents operational borehole monitoring data. It is intended for project teams, engineers, hydrogeologists, implementers, and donors who need a clear description of the reporting logic behind the dashboard and the event-based specific-capacity analysis.
+This document explains the methodology behind the WASH SiteMonitor dashboard, with particular emphasis on the value of remote monitoring of **flow rate**, **groundwater depth**, **drawdown**, **pumped volume**, and **specific capacity**. It is written for project teams, engineers, hydrogeologists, implementers, operators, and donors who need to understand not just what the dashboard shows, but why the readings matter.
+
+Remote monitoring makes it possible to move from reactive maintenance to evidence-based management. Instead of waiting for a site visit or a community complaint, the team can observe how a borehole behaves during pumping, how strongly the groundwater level responds, whether performance is changing over time, and which sites should be prioritised first for inspection or intervention.
 
 The system is designed to answer four practical questions:
 
@@ -11,7 +13,17 @@ The system is designed to answer four practical questions:
 3. How does groundwater level respond during pumping?
 4. Is borehole performance stable, improving, or deteriorating over time?
 
-The methodology supports routine monitoring and decision-making. It is not intended to replace a formal constant-rate pumping test or a full hydrogeological investigation.
+The methodology supports routine monitoring, rapid screening, and better maintenance planning. It is not intended to replace a formal constant-rate pumping test or a full hydrogeological investigation.
+
+### Why these readings are valuable
+
+- **Flow rate** shows whether the system is producing water and whether output is stable or declining.
+- **Water level above pump** shows how the source responds while pumping is taking place.
+- **Drawdown** shows the degree of stress created by abstraction during an event.
+- **Specific capacity** shows how much water the borehole can deliver per metre of drawdown.
+- **Volume and duration** show actual use, operational demand, and pumping behaviour.
+
+Taken together, these parameters provide a much stronger basis for remote monitoring than flow alone.
 
 ---
 
