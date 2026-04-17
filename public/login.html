@@ -137,21 +137,8 @@
     <div class="card">
         <div class="logo">💧</div>
         <h1>WASH Dashboard</h1>
-        <p class="subtitle">Water Access &amp; Sanitation Monitoring</p>
-
-        <form id="loginForm" autocomplete="off">
-            <div class="field">
-                <label>Username</label>
-                <input id="uname" type="text" placeholder="username" autocomplete="username" required />
-            </div>
-            <div class="field">
-                <label>Password</label>
-                <input id="pwd" type="password" placeholder="••••••••" autocomplete="current-password" required />
-            </div>
-            <button class="btn" type="submit">Sign In →</button>
-        </form>
-        <p id="errMsg"></p>
-        <p class="footer">Credentials are verified locally. No data is sent to any server.</p>
+        <p class="subtitle">No sign-in is required. Opening the dashboard now.</p>
+        <p class="footer"><a href="index.html">Open dashboard</a></p>
     </div>
 
     <script>
@@ -159,60 +146,17 @@
             window.location.replace(window.location.href.replace('127.0.0.1', 'localhost'));
         }
 
-        // SHA-256 via WebCrypto (built into all modern browsers – no library needed)
-        async function sha256(str) {
-            const buf = await crypto.subtle.digest(
-                'SHA-256',
-                new TextEncoder().encode(str)
-            );
-            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        // -----------------------------------------------------------------------
-        //  CREDENTIALS  –  store only SHA-256 hashes in source control.
-        //  Shared credentials should be distributed separately to authorised users.
-        //  To change the password, run sha256("username:password") in the browser
-        //  console and replace the hash value below.
-        //  Current: admin / password123
-        const HASH_TABLE = [
-            "c8b0d8a4a585323c7e2c9d7624779327548d6a033a9ee9e427d3faad84e40df6"
-        ];
-        // -----------------------------------------------------------------------
-
-        const IS_LOCAL = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
         const params = new URLSearchParams(window.location.search);
-        const next = params.get("next") || "index.html";
-        const needsProxyFlag = window.location.search.includes("proxy=1") && !next.includes("proxy=1");
-        const nextWithFlags = needsProxyFlag ? `${next}${next.includes("?") ? "&" : "?"}proxy=1` : next;
-        if (window.location.search.includes("proxy=1")) {
-            localStorage.setItem("wash_force_proxy", "1");
+        const next = params.get('next') || 'index.html';
+        const needsProxyFlag = window.location.search.includes('proxy=1') && !next.includes('proxy=1');
+        const nextWithFlags = needsProxyFlag ? `${next}${next.includes('?') ? '&' : '?'}proxy=1` : next;
+
+        if (window.location.search.includes('proxy=1')) {
+            localStorage.setItem('wash_force_proxy', '1');
         }
 
-        document.getElementById('loginForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const uname = document.getElementById('uname').value.trim();
-            const pwd = document.getElementById('pwd').value;
-            const combined = `${uname}:${pwd}`;
-            const hash = await sha256(combined);
-
-            if (HASH_TABLE.includes(hash)) {
-                sessionStorage.setItem('wash_auth', '1');
-                window.location.href = nextWithFlags;
-            } else {
-                document.getElementById('errMsg').textContent = 'Invalid username or password.';
-            }
-        });
-
-        // If already authed this session, skip login
-        if (sessionStorage.getItem('wash_auth') === '1') {
-            window.location.href = nextWithFlags;
-        }
-
-        // Local development convenience: allow localhost access without sign-in.
-        if (IS_LOCAL) {
-            sessionStorage.setItem('wash_auth', '1');
-            window.location.href = nextWithFlags;
-        }
+        sessionStorage.setItem('wash_auth', '1');
+        window.location.replace(nextWithFlags);
     </script>
 </body>
 

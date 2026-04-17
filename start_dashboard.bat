@@ -11,7 +11,7 @@ echo Waiting for server to start...
 timeout /t 2 >nul
 
 echo Opening dashboard in your default browser...
-start "" "http://localhost:%PORT%/login.html?proxy=1"
+start "" "http://localhost:%PORT%/index.html?proxy=1"
 
 echo Done. Local access is enabled for localhost.
 pause

@@ -4,7 +4,7 @@ A **static, browser-based dashboard** for monitoring solar-powered and hand-pump
 
 [![Deploy to GitHub Pages](https://github.com/washways/SiteMonitor/actions/workflows/deploy.yml/badge.svg)](https://github.com/washways/SiteMonitor/actions/workflows/deploy.yml)
 
-**Live Site →** [washways.org/SiteMonitor](https://washways.org/SiteMonitor/login.html)
+**Live Site →** [washways.org/SiteMonitor](https://washways.org/SiteMonitor/index.html)
 
 ---
 
@@ -20,7 +20,7 @@ A **static, browser-based dashboard** for monitoring solar-powered and hand-pump
 | **CSV Export** | Download summarised flow data for the selected period with one click |
 | **Event-based Q/S analysis** | Detects pumping episodes, calculates drawdown, maximum drawdown, pumped volume, and specific capacity per event |
 | **Grouped borehole analytics** | Summary table and trend charts for comparing boreholes over time |
-| **Login gate** | SHA-256 client-side password check with session-based page protection |
+| **Open access** | Shared dashboard pages open directly with no sign-in step |
 | **CORS Proxy** | Cloudflare Worker routes API calls to avoid browser CORS restrictions |
 | **Fully static** | No backend required; runs entirely in the browser on GitHub Pages |
 | **Responsive** | Usable on desktop and phone |

@@ -169,16 +169,6 @@
 </head>
 
 <body>
-    <script>
-    (function () {
-      var isLocal = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
-      if (!isLocal && sessionStorage.getItem('wash_auth') !== '1') {
-        var next = encodeURIComponent('pulse-report.html' + window.location.search);
-        window.location.replace('login.html?next=' + next);
-      }
-    })();
-    </script>
-
     <h1>Borehole Pumping Events &amp; Specific Capacity</h1>
     <p class="note">One row is produced for each continuous pumping episode. The routine stores the start groundwater level, accumulates pumped volume while the borehole is pumping, closes the event using the last non-zero flow reading, and computes drawdown, maximum drawdown, and specific capacity.</p>
 
