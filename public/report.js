@@ -211,6 +211,16 @@ async function generateReport() {
     log(`Starting report from ${startStr} to ${endStr}...`);
 
     const { dcpToken, sslUser, sslPass } = getKeys();
+    
+    // DEBUG: Log what we retrieved from localStorage
+    const hasSSL = !!(sslUser && sslPass);
+    const hasDCP = !!dcpToken;
+    log(`[DEBUG] SSL configured: ${hasSSL}, DCP configured: ${hasDCP}`);
+    if (!hasSSL && !hasDCP) {
+        log(`[DEBUG] localStorage dcp_token: "${localStorage.getItem('dcp_token')}"`);
+        log(`[DEBUG] localStorage ssl_user: "${localStorage.getItem('ssl_user')}"`);
+        log(`[DEBUG] localStorage ssl_pass: "${localStorage.getItem('ssl_pass')}"`);
+    }
 
     // 1. Fetch Sites
     const sites = [];
