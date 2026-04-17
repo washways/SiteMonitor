@@ -228,8 +228,10 @@ async function generateReport() {
         v.forEach(s => s.dcpHeaders = dcpHeaders);
         sites.push(...v);
         log("Found " + v.length + " DCP sites.");
+    }
 
-        // 2. Fetch Data per Site
+    // 2. Fetch Data per Site (process regardless of which APIs are configured)
+    if (sites.length > 0) {
         let processed = 0;
 
         // Process one by one to prevent timeouts completely
@@ -244,9 +246,11 @@ async function generateReport() {
         }
 
         log("Done!");
-        btn.disabled = false;
-        el("btnExport").disabled = false;
+    } else {
+        log("No sites found. Configure API keys in the main dashboard.");
     }
+    btn.disabled = false;
+    el("btnExport").disabled = allReportRows.length === 0;
 
     async function processSite(site, startIso, endIso) {
         try {
