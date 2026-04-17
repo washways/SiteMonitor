@@ -65,13 +65,16 @@ Key datasets used:
 
 ### 2.2 SonSetLink API
 
-The SonSetLink source is used primarily for dashboard reporting, daily usage summaries, and high-level site monitoring where those devices are available.
+The SonSetLink source is used for dashboard reporting and now also for screening-level event interpretation where the API provides daily flow totals and sensor slot depth readings.
 
 Key datasets used:
 
 - site inventory
-- daily usage totals
-- flow counters and related summary measurements
+- daily usage totals (`deflow`)
+- cumulative flow counters (`flow1`)
+- sensor slot depth arrays such as `sensor2`
+
+These records allow the dashboard to support SonSetLink sites as well, although the results should be interpreted as approximate daily screening metrics rather than full hourly pumping-test equivalents.
 
 ### Data harmonisation principle
 

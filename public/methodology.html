@@ -230,7 +230,10 @@
         <section class="panel">
             <h2>Methodological approach used in SiteMonitor</h2>
             <h3>1. Collect telemetry</h3>
-            <p>The system reads hourly monitoring data from the remote telemetry platforms, primarily the DCP Water API for event-based analysis. These data provide the time-stamped records needed to evaluate pumping behaviour and groundwater response.</p>
+            <p>The system reads remote monitoring data from both the DCP Water API and the SonSetLink API. DCP provides hourly flow and water-level series. SonSetLink provides site metadata, daily usage values such as deflow and flow1, and sensor slot arrays such as sensor2 that can be interpreted as depth patterns through the preceding day.</p>
+            <div class="highlight">
+                SonSetLink event metrics are presented as <strong>screening-level estimates</strong>. They are useful for remote monitoring, prioritisation, and trend review, but they should be interpreted as approximate because the API is daily rather than truly hourly for most sites.
+            </div>
 
             <h3>2. Detect pumping events</h3>
             <p>A new event begins when flow rises above the operational threshold of 0.1 m³/h. The event continues while pumping remains above that threshold and closes once flow drops back to zero or near-zero.</p>

@@ -60,6 +60,29 @@ function refreshColumnLabels() {
     if (thDepth) thDepth.textContent = `Night Time Water Depth (${depthUnit})`;
 }
 
+function parseSslTimestamp(rawValue) {
+    if (!rawValue) return null;
+    const ts = Date.parse(String(rawValue).trim().replace(" ", "T") + "Z");
+    return Number.isFinite(ts) ? ts : null;
+}
+
+function sslDisplayName(row = {}) {
+    return String(row.name || row.site_name || row.serial || (row.site ? `Site ${row.site}` : "Unknown SonSetLink Site"));
+}
+
+function getSslDailyFlow(row) {
+    const deflow = Number(row?.deflow);
+    if (Number.isFinite(deflow)) return deflow;
+    const pulse = Number(row?.pulse);
+    if (Number.isFinite(pulse)) return pulse;
+    return 0;
+}
+
+function getSslCumulativeFlow(row) {
+    const total = Number(row?.flow1);
+    return Number.isFinite(total) ? total : null;
+}
+
 // Parse SonSetLink sensor slot arrays into timestamped depth points
 function sslDepthPoints(rows, scale = 0.1) {
     const pts = [];
@@ -73,16 +96,17 @@ function sslDepthPoints(rows, scale = 0.1) {
         }
         if (!Array.isArray(arr) || !arr.length) continue;
 
-        const base = new Date(String(r.timestamp).replace(" ", "T") + "Z").getTime();
+        const base = parseSslTimestamp(r.adjusted_timestamp || r.timestamp);
+        if (!Number.isFinite(base)) continue;
         const slotCount = arr.length;
         const dayMs = 24 * 3600 * 1000;
         const slotMs = dayMs / slotCount;
-        const dayStart = base - dayMs; // slots cover prior 24h
+        const dayStart = base - dayMs;
 
         arr.forEach((v, i) => {
             if (v === null || v === undefined) return;
             const num = Number(v);
-            if (!Number.isFinite(num) || num >= 255) return; // 255 appears to be no-data
+            if (!Number.isFinite(num) || num >= 255) return;
             const ts = dayStart + (i + 0.5) * slotMs;
             pts.push({ timestamp_ms: ts, value: num * scale, code: "ssl_depth" });
         });
@@ -238,7 +262,7 @@ async function sslSites() {
                 source: "SonSetLink",
                 site_id: String(r.site ?? ""),
                 serial: String(r.serial ?? ""),
-                site_name: String(r.name ?? ""),
+                site_name: sslDisplayName(r),
                 country: String(r.location ?? ""),
                 last_updated: ts,
                 flow_total: Number(r.flow_total),
@@ -690,14 +714,20 @@ function renderCharts(site, rows, source) {
     const chartContainer = el("chart");
 
     if (source === "SonSetLink") {
-        const tKey = rows[0].timestamp ? "timestamp" : "adjusted_timestamp";
+        const tKey = rows[0].adjusted_timestamp ? "adjusted_timestamp" : "timestamp";
         const x = rows.map(r => new Date(r[tKey] || r.timestamp));
         const div = document.createElement("div");
         div.id = "c_ssl"; div.style.height = "350px"; div.style.marginBottom = "20px";
         chartContainer.appendChild(div);
         const traces = [];
-        if (rows[0].flow1) traces.push({ x, y: rows.map(r => Number(r.flow1)), mode: "lines", name: "Total Flow", line: { color: "#2563eb" } });
-        if (rows[0].deflow) traces.push({ x, y: rows.map(r => Number(r.deflow)), mode: "lines", name: "Daily Flow", line: { color: "#16a34a" } });
+        const cumulative = rows.map(r => getSslCumulativeFlow(r));
+        const daily = rows.map(r => getSslDailyFlow(r));
+        if (cumulative.some(v => Number.isFinite(v))) {
+            traces.push({ x, y: cumulative.map(v => Number.isFinite(v) ? v : null), mode: "lines", name: "Cumulative Flow", line: { color: "#2563eb" } });
+        }
+        if (daily.some(v => Number.isFinite(v))) {
+            traces.push({ x, y: daily, mode: "lines", name: "Daily Flow", line: { color: "#16a34a" } });
+        }
         if (traces.length) Plotly.newPlot("c_ssl", traces, { title: `${site.site_name} – Flow`, margin: { t: 50, b: 40, l: 60, r: 20 }, hovermode: "x unified" });
 
     } else if (source === "DCP") {
@@ -905,16 +935,14 @@ async function renderTable() {
                     stableDepth = pickStableWaterLevel(points);
                     s.waterTrend = waterTrend || [];
                 } else if (s.source === "SonSetLink") {
-                    // Group SonSetLink daily readings by calendar day and sum flow per day
-                    // SonSetLink data has 'pulse' (flow) and 'timestamp' (string) fields
                     const flowByDay = new Map();
                     for (const p of points) {
                         try {
-                            const ts_ms = new Date(p.timestamp).getTime();
-                            if (Number.isNaN(ts_ms)) continue; // Skip invalid timestamps
+                            const ts_ms = parseSslTimestamp(p.adjusted_timestamp || p.timestamp);
+                            if (!Number.isFinite(ts_ms)) continue;
                             const d = malawiDate(ts_ms);
                             const dayKey = d.toISOString().slice(0, 10);
-                            const flowVal = Number(p.pulse || p.deflow || p.flow1 || 0);
+                            const flowVal = getSslDailyFlow(p);
                             if (!flowByDay.has(dayKey)) flowByDay.set(dayKey, []);
                             flowByDay.get(dayKey).push(flowVal);
                         } catch (e) {
@@ -922,11 +950,9 @@ async function renderTable() {
                             continue;
                         }
                     }
-                    // Calculate daily totals for sparkline
                     const daysAsc = Array.from(flowByDay.keys()).sort();
                     sparkData = daysAsc.map(day => flowByDay.get(day).reduce((acc, v) => acc + v, 0));
-                    // Calculate total flow from all readings
-                    totalFlow = points.reduce((acc, p) => acc + Number(p.pulse || p.deflow || p.flow1 || 0), 0);
+                    totalFlow = points.reduce((acc, p) => acc + getSslDailyFlow(p), 0);
                     const depthPts = sslDepthPoints(points, 0.1);
                     if (depthPts.length) {
                         const byDay = new Map();

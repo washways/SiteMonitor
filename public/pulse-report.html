@@ -170,7 +170,7 @@
 
 <body>
     <h1>Borehole Pumping Events &amp; Specific Capacity</h1>
-    <p class="note">One row is produced for each continuous pumping episode. The routine stores the start groundwater level, accumulates pumped volume while the borehole is pumping, closes the event using the last non-zero flow reading, and computes drawdown, maximum drawdown, and specific capacity.</p>
+    <p class="note">DCP sites use hourly flow and groundwater-level telemetry to detect continuous pumping events. SonSetLink sites are now included using daily flow totals and sensor-slot depth readings to provide screening-level drawdown and Q/S estimates where depth data are available.</p>
 
     <div class="controls">
         <label>
@@ -191,7 +191,7 @@
     </div>
 
     <div class="summary-grid">
-        <div class="summary-card"><small>Boreholes Analysed</small><strong id="summaryBoreholes">0</strong></div>
+        <div class="summary-card"><small>Sites Analysed</small><strong id="summaryBoreholes">0</strong></div>
         <div class="summary-card"><small>Pumping Events</small><strong id="summaryEvents">0</strong></div>
         <div class="summary-card"><small>Valid Q/S Results</small><strong id="summaryValid">0</strong></div>
         <div class="summary-card"><small>Average Q/S</small><strong id="summaryAvgQs">—</strong></div>
@@ -202,13 +202,13 @@
     <div id="statusLog" class="status-log"></div>
 
     <div class="panel">
-        <h2>Grouped Borehole Summary</h2>
-        <p class="note">Use the table or selector below to focus on a single borehole trend.</p>
+        <h2>Grouped Site Summary</h2>
+        <p class="note">Use the table or selector below to focus on a single monitored site trend.</p>
         <div class="controls" style="box-shadow:none;padding:0;background:transparent;">
             <label>
-                Borehole:
+                Site:
                 <select id="boreholeFilter" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:240px;">
-                    <option value="">All boreholes</option>
+                    <option value="">All sites</option>
                 </select>
             </label>
         </div>
