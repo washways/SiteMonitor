@@ -398,9 +398,4 @@ window.addEventListener('DOMContentLoaded', () => {
             document.body.removeChild(a);
         };
     }
-
-    // Initial check
-    if (!getKeys().dcpToken && !getKeys().sslUser) {
-        log("⚠️ No API Keys found. Please configure them in the main dashboard first.");
-    }
 });
