@@ -83,6 +83,31 @@ function getSslCumulativeFlow(row) {
     return Number.isFinite(total) ? total : null;
 }
 
+function parseSslNumericArray(rawValue) {
+    if (!rawValue || String(rawValue).toUpperCase() === "NULL") return [];
+    try {
+        const arr = JSON.parse(rawValue);
+        return Array.isArray(arr)
+            ? arr.map(v => Number(v)).filter(v => Number.isFinite(v) && v < 255)
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+function buildSslResolutionSummary(rows) {
+    const slotCounts = rows.map(r => parseSslNumericArray(r.sensor2).length).filter(v => v > 0);
+    const uniqueDates = new Set(rows.map(r => String(r.adjusted_timestamp || r.timestamp || "").slice(0, 10)).filter(Boolean)).size;
+    const maxSlots = slotCounts.length ? Math.max(...slotCounts) : 0;
+    return {
+        uniqueDates,
+        maxSlots,
+        note: maxSlots
+            ? `Best available SonSetLink telemetry for this site includes ${uniqueDates} daily records and up to ${maxSlots} depth slots per day.`
+            : `Best available SonSetLink telemetry for this site currently includes ${uniqueDates} daily records.`
+    };
+}
+
 // Parse SonSetLink sensor slot arrays into timestamped depth points
 function sslDepthPoints(rows, scale = 0.1) {
     const pts = [];
@@ -279,11 +304,21 @@ async function sslSites() {
 
 async function sslSeries(siteId, serial, startUtc, endUtc) {
     const { sslUser, sslPass } = getKeys();
-    const endpoints = ["usage.json.php", "usage1_msg.json.php", "usage8_msg.json.php", "usage12_msg.json.php"];
+    const endpoints = [
+        "usage.json.php",
+        "status.json.php",
+        "diag.json.php",
+        "test.json.php",
+        "usage1_msg.json.php",
+        "usage8_msg.json.php",
+        "usage12_msg.json.php"
+    ];
+
+    const merged = [];
+    const seen = new Set();
 
     for (const ep of endpoints) {
         const url = new URL(`${SSL_BASE}/${ep}`);
-        // Only add login/password if user has custom overrides
         if (sslUser) url.searchParams.set("login", sslUser);
         if (sslPass) url.searchParams.set("password", sslPass);
         url.searchParams.set("site", siteId);
@@ -294,11 +329,21 @@ async function sslSeries(siteId, serial, startUtc, endUtc) {
         url.searchParams.set("feature[]", "decumulation");
 
         try {
-            const j = await fetchJson(url.toString(), {}, true); // silent=true to hide expected 404s
-            if (Array.isArray(j) && j.length) return { rows: j };
-        } catch { }
+            const j = await fetchJson(url.toString(), {}, true);
+            if (!Array.isArray(j) || !j.length) continue;
+            for (const row of j) {
+                const key = `${row.adjusted_timestamp || row.timestamp || ""}|${row.flow1 || ""}|${row.deflow || ""}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                merged.push({ ...row, _endpoint: ep });
+            }
+        } catch {
+            // Some SonSetLink endpoints are not available for all deployments.
+        }
     }
-    return { rows: [] };
+
+    merged.sort((a, b) => parseSslTimestamp(a.adjusted_timestamp || a.timestamp) - parseSslTimestamp(b.adjusted_timestamp || b.timestamp));
+    return { rows: merged };
 }
 
 // --- DCP WATER (v2) ---
@@ -706,7 +751,12 @@ async function loadSeries() {
 
     if (!rows.length) { detailEl.textContent = "No data found."; return; }
 
-    detailEl.textContent = `Loaded ${rows.length} points.`;
+    if (s.source === "SonSetLink") {
+        const summary = buildSslResolutionSummary(rows);
+        detailEl.textContent = `Loaded ${rows.length} SonSetLink records. ${summary.note}`;
+    } else {
+        detailEl.textContent = `Loaded ${rows.length} points.`;
+    }
     renderCharts(s, rows, s.source);
 }
 
@@ -716,19 +766,59 @@ function renderCharts(site, rows, source) {
     if (source === "SonSetLink") {
         const tKey = rows[0].adjusted_timestamp ? "adjusted_timestamp" : "timestamp";
         const x = rows.map(r => new Date(r[tKey] || r.timestamp));
-        const div = document.createElement("div");
-        div.id = "c_ssl"; div.style.height = "350px"; div.style.marginBottom = "20px";
-        chartContainer.appendChild(div);
+        const summary = buildSslResolutionSummary(rows);
+
+        const note = document.createElement("div");
+        note.style.background = "#eff6ff";
+        note.style.borderLeft = "4px solid #2563eb";
+        note.style.padding = "10px 12px";
+        note.style.marginBottom = "12px";
+        note.style.borderRadius = "6px";
+        note.innerHTML = `<strong>SonSetLink best available data</strong><br><small>${summary.note} Daily flow is shown directly; slot-based depth is approximate and intended for screening.</small>`;
+        chartContainer.appendChild(note);
+
+        const flowDiv = document.createElement("div");
+        flowDiv.id = "c_ssl_flow"; flowDiv.style.height = "350px"; flowDiv.style.marginBottom = "20px";
+        chartContainer.appendChild(flowDiv);
+
         const traces = [];
         const cumulative = rows.map(r => getSslCumulativeFlow(r));
         const daily = rows.map(r => getSslDailyFlow(r));
-        if (cumulative.some(v => Number.isFinite(v))) {
-            traces.push({ x, y: cumulative.map(v => Number.isFinite(v) ? v : null), mode: "lines", name: "Cumulative Flow", line: { color: "#2563eb" } });
-        }
         if (daily.some(v => Number.isFinite(v))) {
-            traces.push({ x, y: daily, mode: "lines", name: "Daily Flow", line: { color: "#16a34a" } });
+            traces.push({ x, y: daily, type: "bar", name: "Daily Flow", marker: { color: "#16a34a", opacity: 0.75 }, yaxis: "y1" });
         }
-        if (traces.length) Plotly.newPlot("c_ssl", traces, { title: `${site.site_name} – Flow`, margin: { t: 50, b: 40, l: 60, r: 20 }, hovermode: "x unified" });
+        if (cumulative.some(v => Number.isFinite(v))) {
+            traces.push({ x, y: cumulative.map(v => Number.isFinite(v) ? v : null), mode: "lines+markers", name: "Cumulative Flow", line: { color: "#2563eb", width: 2 }, yaxis: "y2" });
+        }
+        if (traces.length) {
+            Plotly.newPlot("c_ssl_flow", traces, {
+                title: `${site.site_name} – Best Available SonSetLink Flow Data`,
+                margin: { t: 50, b: 40, l: 60, r: 60 },
+                hovermode: "x unified",
+                yaxis: { title: "Daily Flow" },
+                yaxis2: { title: "Cumulative Flow", overlaying: "y", side: "right", showgrid: false }
+            });
+        }
+
+        const depthPts = sslDepthPoints(rows, 0.1).sort((a, b) => a.timestamp_ms - b.timestamp_ms);
+        if (depthPts.length) {
+            const depthDiv = document.createElement("div");
+            depthDiv.id = "c_ssl_depth"; depthDiv.style.height = "320px"; depthDiv.style.marginBottom = "20px";
+            chartContainer.appendChild(depthDiv);
+            Plotly.newPlot("c_ssl_depth", [{
+                x: depthPts.map(p => new Date(p.timestamp_ms)),
+                y: depthPts.map(p => p.value),
+                mode: "lines+markers",
+                name: "Depth Slots",
+                line: { color: "#f59e0b", width: 2 },
+                marker: { size: 5 }
+            }], {
+                title: `${site.site_name} – Slot-Based Depth Profile`,
+                margin: { t: 45, b: 40, l: 60, r: 20 },
+                hovermode: "x unified",
+                yaxis: { title: "Depth / Water Level" }
+            });
+        }
 
     } else if (source === "DCP") {
         // Group by code
