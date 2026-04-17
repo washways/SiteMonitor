@@ -3,54 +3,84 @@
 
 <head>
     <meta charset="utf-8">
-    <title>Pulse Readings Report</title>
+    <title>Borehole Specific Capacity Report</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="stylesheet" href="styles.css">
     <style>
         body {
             font-family: sans-serif;
             padding: 20px;
-            max-width: 1200px;
+            max-width: 1450px;
             margin: 0 auto;
+            background: #f8fafc;
         }
 
         .controls {
-            background: #f5f5f5;
+            background: #fff;
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
             display: flex;
-            gap: 15px;
+            gap: 12px;
             align-items: center;
             flex-wrap: wrap;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+
+        .summary-card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 14px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .summary-card small {
+            color: #64748b;
+            display: block;
+            margin-bottom: 6px;
+        }
+
+        .summary-card strong {
+            font-size: 1.4rem;
         }
 
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 20px;
+            background: #fff;
         }
 
         th,
         td {
             padding: 10px;
-            border: 1px solid #ddd;
+            border: 1px solid #e5e7eb;
             text-align: left;
+            vertical-align: top;
+            font-size: 14px;
         }
 
         th {
-            background: #eee;
+            background: #eff6ff;
             position: sticky;
             top: 0;
+            z-index: 1;
         }
 
         .status-log {
-            background: #333;
+            background: #0f172a;
             color: #fff;
             padding: 10px;
             border-radius: 4px;
             font-family: monospace;
-            max-height: 150px;
+            max-height: 160px;
             overflow-y: auto;
             display: none;
             margin-bottom: 10px;
@@ -67,18 +97,73 @@
         }
 
         button:disabled {
-            background: #ccc;
+            background: #cbd5e1;
             cursor: not-allowed;
         }
 
         button.secondary {
-            background: #666;
+            background: #475569;
         }
 
         input[type="date"] {
             padding: 6px;
             border-radius: 4px;
-            border: 1px solid #ccc;
+            border: 1px solid #cbd5e1;
+        }
+
+        .status-valid {
+            background: #f0fdf4;
+        }
+
+        .status-review {
+            background: #fffbeb;
+        }
+
+        .status-invalid {
+            background: #fef2f2;
+        }
+
+        .note {
+            color: #334155;
+            margin-bottom: 16px;
+        }
+
+        .panel {
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 18px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+        }
+
+        .chart-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 16px;
+        }
+
+        .chart-box {
+            min-height: 340px;
+        }
+
+        .summary-link {
+            background: none;
+            border: none;
+            color: #2563eb;
+            padding: 0;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .summary-link:hover {
+            text-decoration: underline;
+        }
+
+        @media (max-width: 900px) {
+            .chart-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
@@ -94,7 +179,8 @@
     })();
     </script>
 
-    <h1>Pulse Readings Daily Report</h1>
+    <h1>Borehole Pumping Events &amp; Specific Capacity</h1>
+    <p class="note">One row is produced for each continuous pumping episode. The routine stores the start groundwater level, accumulates pumped volume while the borehole is pumping, closes the event using the last non-zero flow reading, and computes drawdown, maximum drawdown, and specific capacity.</p>
 
     <div class="controls">
         <label>
@@ -105,33 +191,85 @@
             End Date:
             <input type="date" id="endDate">
         </label>
-        <button id="btnGenerate">Generate Report</button>
+        <button id="btnGenerate">Run Analysis</button>
+        <button id="btnRefresh" class="secondary">Force Refresh</button>
         <div style="flex-grow: 1;"></div>
         <button id="btnExport" class="secondary" disabled>Download CSV</button>
+        <button id="btnExportJson" class="secondary" disabled>Download JSON</button>
         <a href="index.html" style="margin-left: 10px;">Back to Dashboard</a>
     </div>
 
+    <div class="summary-grid">
+        <div class="summary-card"><small>Boreholes Analysed</small><strong id="summaryBoreholes">0</strong></div>
+        <div class="summary-card"><small>Pumping Events</small><strong id="summaryEvents">0</strong></div>
+        <div class="summary-card"><small>Valid Q/S Results</small><strong id="summaryValid">0</strong></div>
+        <div class="summary-card"><small>Average Q/S</small><strong id="summaryAvgQs">—</strong></div>
+        <div class="summary-card"><small>Flagged Events</small><strong id="summaryFlagged">0</strong></div>
+    </div>
+
+    <p id="cacheStatus" class="note"></p>
     <div id="statusLog" class="status-log"></div>
+
+    <div class="panel">
+        <h2>Grouped Borehole Summary</h2>
+        <p class="note">Use the table or selector below to focus on a single borehole trend.</p>
+        <div class="controls" style="box-shadow:none;padding:0;background:transparent;">
+            <label>
+                Borehole:
+                <select id="boreholeFilter" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:240px;">
+                    <option value="">All boreholes</option>
+                </select>
+            </label>
+        </div>
+        <table id="boreholeSummaryTable">
+            <thead>
+                <tr>
+                    <th>Borehole</th>
+                    <th>Events</th>
+                    <th>Valid Q/S</th>
+                    <th>Total Volume (m&#xB3;)</th>
+                    <th>Average Q/S</th>
+                    <th>Average Drawdown (m)</th>
+                    <th>Max Drawdown (m)</th>
+                    <th>Flagged</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+    <div class="panel">
+        <h2>Trend Charts</h2>
+        <div class="chart-grid">
+            <div id="qsBarChart" class="chart-box"></div>
+            <div id="eventTrendChart" class="chart-box"></div>
+        </div>
+    </div>
 
     <div id="resultsArea">
         <table id="reportTable">
             <thead>
                 <tr>
-                    <th>Source</th>
-                    <th>System ID</th>
-                    <th>Site Name</th>
-                    <th>Date Range</th>
-                    <th>Daily Total Flow (m&#xB3;/day)</th>
-                    <th>Trend (Sparkline)</th>
-                    <th>Status</th>
+                    <th>Borehole</th>
+                    <th>Event Window</th>
+                    <th>Hours</th>
+                    <th>Volume (m&#xB3;)</th>
+                    <th>Final Flow (m&#xB3;/h)</th>
+                    <th>Start Level (m)</th>
+                    <th>End Level (m)</th>
+                    <th>Drawdown (m)</th>
+                    <th>Max Drawdown (m)</th>
+                    <th>Specific Capacity</th>
+                    <th>Quality Score</th>
+                    <th>Flags</th>
                 </tr>
             </thead>
-            <tbody>
-                <!-- Rows will be added here -->
-            </tbody>
+            <tbody></tbody>
         </table>
     </div>
 
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="event-analysis.js"></script>
     <script src="report.js"></script>
 </body>
 
