@@ -226,34 +226,38 @@ async function generateReport() {
 
     log(`Starting report from ${startStr} to ${endStr}...`);
 
+    // Try to fetch from both APIs. On the live site, the Cloudflare Worker
+    // will inject default credentials. For localhost, use any credentials from localStorage.
     const { dcpToken, sslUser, sslPass } = await getKeys();
-    
-    // DEBUG: Log what we retrieved from localStorage
-    const hasSSL = !!(sslUser && sslPass);
-    const hasDCP = !!dcpToken;
-    log(`[DEBUG] SSL configured: ${hasSSL}, DCP configured: ${hasDCP}`);
-    if (!hasSSL && !hasDCP) {
-        log(`[DEBUG] localStorage dcp_token: "${localStorage.getItem('dcp_token')}"`);
-        log(`[DEBUG] localStorage ssl_user: "${localStorage.getItem('ssl_user')}"`);
-        log(`[DEBUG] localStorage ssl_pass: "${localStorage.getItem('ssl_pass')}"`);
-    }
 
-    // 1. Fetch Sites
+    // 1. Fetch Sites - Always try both APIs (Worker will inject creds if available)
     const sites = [];
-    if (sslUser && sslPass) {
-        log("Fetching SSL Sites...");
+    
+    // Try SSL Sites
+    log("Fetching SSL Sites...");
+    try {
         const s = await sslSites(sslUser, sslPass);
-        sites.push(...s);
-        log(`Found ${s.length} SSL sites.`);
+        if (s.length > 0) {
+            sites.push(...s);
+            log(`Found ${s.length} SSL sites.`);
+        }
+    } catch (e) {
+        log(`SSL Sites: ${e.message}`);
     }
-    if (dcpToken) {
-        log("Fetching DCP Sites...");
-        const dcpHeaders = { "X-API-Key": dcpToken, "Accept": "application/json" };
+    
+    // Try DCP Sites
+    log("Fetching DCP Sites...");
+    try {
+        const dcpHeaders = dcpToken ? { "X-API-Key": dcpToken, "Accept": "application/json" } : { "Accept": "application/json" };
         const v = await dcpWells(dcpHeaders);
-        // store headers on site object for ease
-        v.forEach(s => s.dcpHeaders = dcpHeaders);
-        sites.push(...v);
-        log("Found " + v.length + " DCP sites.");
+        if (v.length > 0) {
+            // store headers on site object for ease
+            v.forEach(s => s.dcpHeaders = dcpHeaders);
+            sites.push(...v);
+            log("Found " + v.length + " DCP sites.");
+        }
+    } catch (e) {
+        log(`DCP Sites: ${e.message}`);
     }
 
     // 2. Fetch Data per Site (process regardless of which APIs are configured)
