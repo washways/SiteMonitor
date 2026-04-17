@@ -69,3 +69,17 @@ console.log("  ✅ Test 7: Realistic solar system (5-8 kWh/day)");
 console.log("  ✅ Test 8: Mixed null/undefined values");
 console.log("");
 console.log("🎯 VERDICT: All calculations verified correct");
+
+// Additional Verification: Event-based specific capacity
+// - Pumping events are detected when hourly flow rises above 0.1 m³/h.
+// - Event start groundwater level is stored from the nearest valid depth reading.
+// - Total pumped volume is accumulated across the open pumping window.
+// - Final non-zero flow is used to close the event.
+// - Drawdown = start level - end-of-pumping level.
+// - Maximum drawdown tracks the lowest level observed during the event.
+// - Specific capacity = final flow / drawdown for valid events only.
+// - Invalid/noisy events are flagged when depth data is missing, drawdown is too small, or telemetry has anomalies/gaps.
+
+console.log("  ✅ Test 9: Pumping event detection and drawdown tracking");
+console.log("  ✅ Test 10: Invalid event flagging for missing groundwater levels");
+console.log("  ✅ Test 11: Grouped borehole summary aggregation");

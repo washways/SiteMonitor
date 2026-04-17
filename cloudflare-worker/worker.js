@@ -26,6 +26,7 @@ const ALLOWED_ORIGINS = [
     'https://www.washways.org',
     'https://washways.github.io',
     'http://localhost:3000',
+    'http://127.0.0.1:3000',
 ];
 
 function corsHeaders(origin) {

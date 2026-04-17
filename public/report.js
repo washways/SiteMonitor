@@ -1,406 +1,478 @@
+if (location.hostname === "127.0.0.1") {
+    const redirected = location.href.replace("127.0.0.1", "localhost");
+    location.replace(redirected);
+}
 
-const DCP_BASE = "/api/dcp";
+const PROXY_BASE = "https://wash-proxy.washways1.workers.dev";
+const IS_LOCAL = !!location.hostname.match(/^(localhost|127\.0\.0\.1)$/);
+const FORCE_PROXY = window.location.search.includes("proxy=1") || localStorage.getItem("wash_force_proxy") === "1";
+if (window.location.search.includes("proxy=1")) {
+    localStorage.setItem("wash_force_proxy", "1");
+}
+const USE_PROXY = !IS_LOCAL || FORCE_PROXY;
+const IS_LIVE = USE_PROXY;
+const DCP_BASE = USE_PROXY ? `${PROXY_BASE}/dcp` : "https://api-dev.dcp.solar/water";
+const LOCAL_TEST_DCP_TOKEN = "0rlv0amn04vfojogn1523w43ujgk0k";
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
+const {
+    detectPumpingEvents,
+    buildEventSummary,
+    buildBoreholeSummaries,
+    buildEventCsv
+} = window.SiteMonitorEventAnalysis || {};
 const el = (id) => document.getElementById(id);
 const logEl = el("statusLog");
 
+let allEventRows = [];
+let lastDateRange = null;
+
 function log(msg) {
+    if (!logEl) return;
     logEl.style.display = "block";
     const line = document.createElement("div");
     line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
     logEl.appendChild(line);
     logEl.scrollTop = logEl.scrollHeight;
-    console.log(msg);
 }
 
-// ====================== AUTH & CONFIG ======================
-
 function getKeys() {
+    const savedToken = (localStorage.getItem("dcp_token") || "").trim();
     return {
-        dcpToken: (localStorage.getItem("dcp_token") || "").trim(),
-        sslUser: (localStorage.getItem("ssl_user") || "").trim(),
-        sslPass: (localStorage.getItem("ssl_pass") || "").trim()
+        dcpToken: savedToken || (IS_LOCAL ? LOCAL_TEST_DCP_TOKEN : "")
     };
 }
 
-// ====================== API HELPERS ======================
+function cacheKey(startStr, endStr) {
+    return `siteMonitor_specific_capacity_${startStr}_${endStr}`;
+}
 
-async function fetchJson(url, options = {}, silent = false) {
+function loadCachedEvents(startStr, endStr) {
     try {
-        const res = await fetch(url, options);
-        if (!res.ok) {
-            const text = await res.text();
-            if (!silent) console.error("API Error Body:", text);
-            throw new Error(`HTTP ${res.status}: ${text.slice(0, 100)}`);
-        }
-        const text = await res.text();
-        if (!text.trim()) return {};
-        return JSON.parse(text);
-    } catch (e) {
-        if (!silent) console.warn("Fetch Error:", url, e.message);
-        throw e;
+        const raw = localStorage.getItem(cacheKey(startStr, endStr));
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed.saved_at || (Date.now() - parsed.saved_at) > CACHE_TTL_MS) return null;
+        return parsed;
+    } catch {
+        return null;
     }
 }
 
-const MALAWI_BBOX = { latMin: -17.2, latMax: -9.2, lonMin: 32.5, lonMax: 36.1 };
-
-function inMalawiBBox(lat, lon) {
-    const la = Number(lat), lo = Number(lon);
-    if (!Number.isFinite(la) || !Number.isFinite(lo)) return false;
-    return la >= MALAWI_BBOX.latMin && la <= MALAWI_BBOX.latMax && lo >= MALAWI_BBOX.lonMin && lo <= MALAWI_BBOX.lonMax;
-}
-
-// Malawi timezone offset
-const MALAWI_TZ_OFFSET_MIN = 120; // UTC+2
-function malawiDate(tsMs) {
-    return new Date(tsMs + MALAWI_TZ_OFFSET_MIN * 60 * 1000);
-}
-
-// Aggregate hourly flow rates (m³/h) to daily totals (m³/day) using Malawi timezone (UTC+2)
-function aggregateFlowToDailyM3(flowPoints) {
-    if (!flowPoints || flowPoints.length === 0) return 0;
-    
-    // Group by calendar day in Malawi timezone
-    const byDay = new Map();
-    for (const p of flowPoints) {
-        const d = malawiDate(p.timestamp_ms);
-        const dayKey = d.toISOString().slice(0, 10);
-        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
-        byDay.get(dayKey).push(p);
-    }
-    
-    // Sum hourly values per day
-    let totalM3 = 0;
-    for (const [day, points] of byDay) {
-        const dayTotal = points.reduce((sum, p) => sum + (Number(p.value) || 0), 0);
-        totalM3 += dayTotal;
-    }
-    
-    return totalM3;
-}
-
-// --- SONSETLINK ---
-async function sslSites(user, pass) {
-    const base = "/api/ssl/sites.json.php";
-    const url = new URL(base, window.location.origin);
-    url.searchParams.set("login", user);
-    url.searchParams.set("password", pass);
-
-    try {
-        const rows = await fetchJson(url.toString());
-        if (!Array.isArray(rows)) return [];
-        return rows
-            .filter(r => inMalawiBBox(r.latitude, r.longitude)) // Filter for Malawi
-            .map(r => ({
-                source: "SonSetLink",
-                site_id: String(r.site ?? ""),
-                serial: String(r.serial ?? ""),
-                name: String(r.name ?? r.site ?? "Unknown"),
-                lat: Number(r.latitude),
-                lon: Number(r.longitude)
-            }));
-    } catch (e) {
-        log(`SSL Sites Error: ${e.message}`);
-        return [];
-    }
-}
-
-async function sslSeries(site, startIso, endIso) {
-    const { sslUser, sslPass } = getKeys();
-    // Need YYYY-MM-DD HH:MM:SS format
-    const format = (dStr) => dStr.replace("T", " ").slice(0, 19);
-
-    // endpoints to check
-    // endpoints to check
-    const endpoints = ["usage.json.php"]; // usage1_msg.json.php returned 404 in tests
-
-    for (const ep of endpoints) {
-        const url = new URL(`/api/ssl/${ep}`, window.location.origin);
-        url.searchParams.set("login", sslUser);
-        url.searchParams.set("password", sslPass);
-        url.searchParams.set("site", site.site_id);
-        url.searchParams.set("serial", site.serial);
-        url.searchParams.set("start_date", format(startIso));
-        url.searchParams.set("end_date", format(endIso));
-        url.searchParams.set("feature[]", "decumulation"); // Request daily flow if available
-
-        try {
-            const j = await fetchJson(url.toString());
-            // Need pulse/flow data. 
-            // We want SUM of flow for the day or daily value.
-            if (Array.isArray(j) && j.length > 0) return j.map(r => ({
-                timestamp: r.timestamp || r.adjusted_timestamp,
-                // Use deflow (daily) if available, else flow1 (could be cumulative or raw)
-                pulse: Number(r.deflow || r.flow1 || 0)
-            }));
-        } catch { }
-    }
-    return [];
-}
-
-// --- DCP ---
-async function dcpWells(headers) {
-    const j = await fetchJson(DCP_BASE + "/v1/wells", { headers });
-    if (!Array.isArray(j)) return [];
-    return j.map(r => ({
-        source: "DCP",
-        site_id: String(r.well_id),
-        name: String(r.name ?? "Unknown"),
+function saveCachedEvents(startStr, endStr, events, summary) {
+    localStorage.setItem(cacheKey(startStr, endStr), JSON.stringify({
+        saved_at: Date.now(),
+        events,
+        summary
     }));
 }
 
-async function dcpSeries(site, headers, startIso, endIso) {
-    try {
-        const url = new URL(DCP_BASE + "/v1/wells/" + site.site_id + "/timeseries", window.location.origin);
-        url.searchParams.set("parameter", "flow");
-        url.searchParams.set("from", startIso);
-        url.searchParams.set("to", endIso);
-        
-        const payload = await fetchJson(url.toString(), { headers });
-        const values = payload.time_series?.values || [];
-        
-        const points = values.filter(v => v.value !== undefined && v.value !== null).map(v => ({
-            timestamp: new Date(v.time).toISOString(),
-            pulse: Number(v.value) // using pulse to map to existing logic
-        }));
-        
-        if (points.length > 0) {
-            site.status = "OK";
-        } else {
-            site.status = "No Data";
-        }
-        return points;
+async function fetchJson(url, options = {}) {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${text.slice(0, 100)}`);
+    }
+    return text.trim() ? JSON.parse(text) : {};
+}
 
-    } catch (e) {
-        log("[DCP] Graph Error " + site.site_id + ": " + e.message);
-        site.status = "Error";
-        return [];
+async function dcpWells(headers) {
+    const opts = headers ? { headers } : {};
+    const rows = await fetchJson(`${DCP_BASE}/v2/wells`, opts);
+    if (!Array.isArray(rows)) return [];
+
+    return rows.map((row) => ({
+        source: "DCP",
+        site_id: String(row.well_id),
+        site_name: String(row.name || row.well_id || "Unknown Borehole")
+    }));
+}
+
+async function dcpSeries(headers, wellId, parameter, startIso, endIso) {
+    const url = new URL(`${DCP_BASE}/v2/wells/${wellId}/timeseries`);
+    const fmtIso = (iso) => iso.includes(".") ? `${iso.split(".")[0]}Z` : iso;
+    url.searchParams.set("parameter", parameter);
+    url.searchParams.set("from", fmtIso(startIso));
+    url.searchParams.set("to", fmtIso(endIso));
+
+    const payload = await fetchJson(url.toString(), headers ? { headers } : {});
+    const values = payload.time_series?.values || [];
+
+    return values
+        .filter((entry) => entry.value !== undefined && entry.value !== null)
+        .map((entry) => ({
+            code: parameter,
+            value: Number(entry.value),
+            timestamp_ms: new Date(entry.time).getTime()
+        }));
+}
+
+function updateSummary(summary, boreholeCount, cached = false) {
+    el("summaryBoreholes").textContent = boreholeCount || 0;
+    el("summaryEvents").textContent = summary.total_events || 0;
+    el("summaryValid").textContent = summary.valid_events || 0;
+    el("summaryAvgQs").textContent = Number.isFinite(summary.average_specific_capacity)
+        ? summary.average_specific_capacity.toFixed(2)
+        : "—";
+    el("summaryFlagged").textContent = summary.flagged_events || 0;
+    el("cacheStatus").textContent = cached
+        ? "Showing cached analysis from local storage."
+        : "Showing fresh analysis.";
+}
+
+function formatDateTime(ts) {
+    return ts ? new Date(ts).toLocaleString() : "—";
+}
+
+function formatFlags(flags) {
+    const active = Object.entries(flags || {})
+        .filter(([, value]) => !!value)
+        .map(([key]) => key.replace(/_/g, " "));
+    return active.length ? active.join(", ") : "OK";
+}
+
+function renderRows(events) {
+    const tbody = el("reportTable").querySelector("tbody");
+    tbody.innerHTML = "";
+
+    if (!events.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="12" style="text-align:center;color:#666;">No pumping events detected for the selected period.</td>`;
+        tbody.appendChild(tr);
+        return;
+    }
+
+    const ordered = [...events].sort((a, b) => b.event_start_ms - a.event_start_ms);
+    for (const event of ordered) {
+        const tr = document.createElement("tr");
+        const hasIssues = Object.values(event.flags || {}).some(Boolean);
+        const status = event.flags.invalid_specific_capacity ? "Invalid" : (hasIssues ? "Review" : "Valid");
+        tr.className = status === "Invalid" ? "status-invalid" : (status === "Review" ? "status-review" : "status-valid");
+        tr.innerHTML = `
+            <td>${event.well_name || event.well_id}</td>
+            <td>${formatDateTime(event.event_start_ms)}<br><small>to ${formatDateTime(event.event_end_ms)}</small></td>
+            <td>${event.duration_hours ?? "—"}</td>
+            <td>${event.total_volume_m3 ?? "—"}</td>
+            <td>${event.final_flow_m3h ?? "—"}</td>
+            <td>${event.start_level_m ?? "—"}</td>
+            <td>${event.end_level_m ?? "—"}</td>
+            <td>${event.drawdown_m ?? "—"}</td>
+            <td>${event.max_drawdown_m ?? "—"}</td>
+            <td>${event.specific_capacity_m3h_per_m ?? "—"}</td>
+            <td>${event.quality_score ?? 0}</td>
+            <td><strong>${status}</strong><br><small>${formatFlags(event.flags)}</small></td>
+        `;
+        tbody.appendChild(tr);
     }
 }
 
-// ====================== LOGIC ======================
+function renderGroupedSummary(events) {
+    const tbody = el("boreholeSummaryTable").querySelector("tbody");
+    tbody.innerHTML = "";
 
-let allReportRows = [];
+    const rows = buildBoreholeSummaries(events);
+    if (!rows.length) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td colspan="8" style="text-align:center;color:#666;">No borehole summaries available yet.</td>`;
+        tbody.appendChild(tr);
+        return rows;
+    }
 
-async function generateReport() {
+    for (const row of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td><button class="summary-link" data-well-id="${row.well_id}">${row.well_name}</button></td>
+            <td>${row.event_count}</td>
+            <td>${row.valid_event_count}</td>
+            <td>${row.total_volume_m3 ?? "—"}</td>
+            <td>${row.avg_specific_capacity ?? "—"}</td>
+            <td>${row.avg_drawdown_m ?? "—"}</td>
+            <td>${row.max_drawdown_m ?? "—"}</td>
+            <td>${row.flagged_event_count}</td>
+        `;
+        tbody.appendChild(tr);
+    }
+
+    tbody.querySelectorAll(".summary-link").forEach((button) => {
+        button.addEventListener("click", () => {
+            el("boreholeFilter").value = button.dataset.wellId;
+            renderCharts(allEventRows);
+        });
+    });
+
+    return rows;
+}
+
+function populateBoreholeFilter(events) {
+    const select = el("boreholeFilter");
+    const rows = buildBoreholeSummaries(events);
+    const current = select.value;
+
+    select.innerHTML = `<option value="">All boreholes</option>`;
+    for (const row of rows) {
+        const option = document.createElement("option");
+        option.value = row.well_id;
+        option.textContent = row.well_name;
+        select.appendChild(option);
+    }
+
+    if (rows.some((row) => row.well_id === current)) {
+        select.value = current;
+    } else if (rows.length) {
+        select.value = rows[0].well_id;
+    }
+}
+
+function renderCharts(events) {
+    const summaryRows = buildBoreholeSummaries(events);
+    const barTarget = el("qsBarChart");
+    const trendTarget = el("eventTrendChart");
+    const selectedWellId = el("boreholeFilter").value;
+    const selectedEvents = selectedWellId ? events.filter((event) => event.well_id === selectedWellId) : events;
+    const orderedEvents = [...selectedEvents].sort((a, b) => a.event_start_ms - b.event_start_ms);
+
+    if (!window.Plotly) {
+        barTarget.innerHTML = "Charting library unavailable.";
+        trendTarget.innerHTML = "Charting library unavailable.";
+        return;
+    }
+
+    if (!summaryRows.length) {
+        Plotly.purge(barTarget);
+        Plotly.purge(trendTarget);
+        barTarget.innerHTML = "No chart data yet.";
+        trendTarget.innerHTML = "No chart data yet.";
+        return;
+    }
+
+    const validSummary = summaryRows.filter((row) => Number.isFinite(row.avg_specific_capacity));
+    if (validSummary.length) {
+        Plotly.newPlot(barTarget, [{
+            type: "bar",
+            x: validSummary.map((row) => row.well_name),
+            y: validSummary.map((row) => row.avg_specific_capacity),
+            marker: { color: "#2563eb" },
+            hovertemplate: "%{x}<br>Average Q/S: %{y:.2f}<extra></extra>"
+        }], {
+            title: "Average specific capacity by borehole",
+            margin: { t: 40, r: 20, b: 120, l: 60 },
+            xaxis: { tickangle: -35 },
+            yaxis: { title: "Q/S" }
+        }, { responsive: true, displayModeBar: false });
+    } else {
+        Plotly.purge(barTarget);
+        barTarget.innerHTML = "No valid Q/S values are available for the selected period.";
+    }
+
+    if (!orderedEvents.length) {
+        Plotly.purge(trendTarget);
+        trendTarget.innerHTML = "No event trend data yet.";
+        return;
+    }
+
+    const wellLabel = selectedWellId
+        ? (orderedEvents[0]?.well_name || selectedWellId)
+        : "All boreholes";
+
+    Plotly.newPlot(trendTarget, [
+        {
+            type: "scatter",
+            mode: "lines+markers",
+            name: "Specific Capacity",
+            x: orderedEvents.map((event) => new Date(event.event_start_ms)),
+            y: orderedEvents.map((event) => event.specific_capacity_m3h_per_m),
+            marker: { color: "#0f766e", size: 8 },
+            line: { color: "#0f766e" },
+            connectgaps: false,
+            hovertemplate: "%{x}<br>Q/S: %{y:.2f}<extra></extra>"
+        },
+        {
+            type: "scatter",
+            mode: "lines+markers",
+            name: "Max Drawdown",
+            x: orderedEvents.map((event) => new Date(event.event_start_ms)),
+            y: orderedEvents.map((event) => event.max_drawdown_m),
+            yaxis: "y2",
+            marker: { color: "#f59e0b", size: 7 },
+            line: { color: "#f59e0b", dash: "dot" },
+            connectgaps: false,
+            hovertemplate: "%{x}<br>Max drawdown: %{y:.2f} m<extra></extra>"
+        }
+    ], {
+        title: `Event trend for ${wellLabel}`,
+        margin: { t: 40, r: 60, b: 50, l: 60 },
+        xaxis: { title: "Event date" },
+        yaxis: { title: "Specific Capacity (m³/h/m)" },
+        yaxis2: {
+            title: "Max Drawdown (m)",
+            overlaying: "y",
+            side: "right"
+        },
+        legend: { orientation: "h" }
+    }, { responsive: true, displayModeBar: false });
+}
+
+function downloadText(content, filename, type) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+function exportCsv() {
+    if (!allEventRows.length) {
+        alert("No pumping-event rows are available yet.");
+        return;
+    }
+    downloadText(buildEventCsv(allEventRows), "specific_capacity_events.csv", "text/csv;charset=utf-8");
+}
+
+function exportJson() {
+    if (!allEventRows.length) {
+        alert("No pumping-event rows are available yet.");
+        return;
+    }
+
+    const payload = {
+        exported_at: new Date().toISOString(),
+        timezone: "UTC+2 (Africa/Blantyre)",
+        date_range: lastDateRange,
+        summary: buildEventSummary(allEventRows),
+        events: allEventRows
+    };
+
+    downloadText(JSON.stringify(payload, null, 2), "specific_capacity_events.json", "application/json;charset=utf-8");
+}
+
+async function analyzeWell(well, headers, startIso, endIso) {
+    const [flowPoints, levelPoints] = await Promise.all([
+        dcpSeries(headers, well.site_id, "flow", startIso, endIso),
+        dcpSeries(headers, well.site_id, "water_level_above_pump", startIso, endIso)
+    ]);
+
+    return detectPumpingEvents(flowPoints, levelPoints, {
+        wellId: well.site_id,
+        wellName: well.site_name,
+        source: "DCP"
+    });
+}
+
+async function generateReport(forceRefresh = false) {
+    if (!detectPumpingEvents || !buildEventSummary || !buildBoreholeSummaries || !buildEventCsv) {
+        alert("The event analysis module failed to load.");
+        return;
+    }
+
     const btn = el("btnGenerate");
     btn.disabled = true;
-    allReportRows = [];
-    el("reportTable").querySelector("tbody").innerHTML = "";
+    el("btnExport").disabled = true;
+    el("btnExportJson").disabled = true;
     logEl.innerHTML = "";
 
-    const startStr = el("startDate").value; // YYYY-MM-DD
+    const startStr = el("startDate").value;
     const endStr = el("endDate").value;
-
     if (!startStr || !endStr) {
-        alert("Please select dates.");
+        alert("Please select a start and end date.");
         btn.disabled = false;
         return;
     }
 
-    // Prepare ISO strings for APIs
-    const startDate = new Date(startStr);
+    lastDateRange = { start: startStr, end: endStr };
+
+    if (!forceRefresh) {
+        const cached = loadCachedEvents(startStr, endStr);
+        if (cached) {
+            allEventRows = cached.events || [];
+            renderRows(allEventRows);
+            renderGroupedSummary(allEventRows);
+            populateBoreholeFilter(allEventRows);
+            renderCharts(allEventRows);
+            updateSummary(cached.summary || buildEventSummary(allEventRows), new Set(allEventRows.map((e) => e.well_id)).size, true);
+            log(`Loaded ${allEventRows.length} cached pumping events.`);
+            el("btnExport").disabled = allEventRows.length === 0;
+            el("btnExportJson").disabled = allEventRows.length === 0;
+            btn.disabled = false;
+            return;
+        }
+    }
+
+    const startIso = new Date(startStr).toISOString();
     const endDate = new Date(endStr);
-    // Add one day to end date to include it fully if it's just a date string
-    const endExclusive = new Date(endDate);
-    endExclusive.setDate(endExclusive.getDate() + 1);
+    endDate.setDate(endDate.getDate() + 1);
+    const endIso = endDate.toISOString();
 
-    const startIso = startDate.toISOString(); // 2025-01-01T00:00:00.000Z
-    const endIso = endExclusive.toISOString();
-
-    log(`Starting report from ${startStr} to ${endStr}...`);
-
-    const { dcpToken, sslUser, sslPass } = getKeys();
-
-    // 1. Fetch Sites
-    const sites = [];
-    if (sslUser && sslPass) {
-        log("Fetching SSL Sites...");
-        const s = await sslSites(sslUser, sslPass);
-        sites.push(...s);
-        log(`Found ${s.length} SSL sites.`);
-    }
-    if (dcpToken) {
-        log("Fetching DCP Sites...");
-        const dcpHeaders = { "X-API-Key": dcpToken, "Accept": "application/json" };
-        const v = await dcpWells(dcpHeaders);
-        // store headers on site object for ease
-        v.forEach(s => s.dcpHeaders = dcpHeaders);
-        sites.push(...v);
-        log("Found " + v.length + " DCP sites.");
-
-        // 2. Fetch Data per Site
-        let processed = 0;
-
-        // Process one by one to prevent timeouts completely
-        const CHUNK_SIZE = 1;
-        for (let i = 0; i < sites.length; i += CHUNK_SIZE) {
-            const chunk = sites.slice(i, i + CHUNK_SIZE);
-            await Promise.all(chunk.map(s => processSite(s, startIso, endIso)));
-            processed += chunk.length;
-            log(`Processed ${processed}/${sites.length} sites...`);
-            // Add a longer delay
-            await new Promise(r => setTimeout(r, 1000));
-        }
-
-        log("Done!");
+    const { dcpToken } = getKeys();
+    if (!IS_LIVE && !dcpToken) {
+        alert("Add a DCP API key in the main dashboard settings before running this report locally.");
         btn.disabled = false;
-        el("btnExport").disabled = false;
+        return;
     }
 
-    async function processSite(site, startIso, endIso) {
-        try {
-            // -----------------------------------------
-            // 4. Process Site Data (Period Summary)
-            // -----------------------------------------
-            // Fetch full range data
-            let points = [];
-            if (site.source === "DCP") {
-                const startEpoch = Math.floor(new Date(startIso).getTime() / 1000);
-                const endEpoch = Math.floor(new Date(endIso).getTime() / 1000);
-                points = await dcpSeries(site, site.dcpHeaders, startIso, endIso);
-            } else {
-                points = await sslSeries(site, startIso, endIso);
-            }
+    try {
+        log("Fetching monitored DCP boreholes...");
+        const headers = dcpToken ? { "X-Api-Key": dcpToken, "Accept": "application/json" } : { "Accept": "application/json" };
+        const wells = await dcpWells(headers);
+        log(`Found ${wells.length} boreholes. Analysing pumping events...`);
 
-            // Calculate Stats & Sparkline Data
-            let totalFlow = 0;
-            let sparkData = [];
-            let sparkLabel = "Flow"; // Default label
-
-            if (points.length > 0) {
-                // We have actual flow data
-                if (site.source === "DCP") {
-                    // Convert hourly rates to daily totals for DCP
-                    const flowMs = points.map(p => ({
-                        timestamp_ms: new Date(p.timestamp).getTime(),
-                        value: p.pulse
-                    }));
-                    totalFlow = aggregateFlowToDailyM3(flowMs);
-                    
-                    // Generate daily sparkline data
-                    const byDay = new Map();
-                    for (const p of flowMs) {
-                        const d = malawiDate(p.timestamp_ms);
-                        const dayKey = d.toISOString().slice(0, 10);
-                        if (!byDay.has(dayKey)) byDay.set(dayKey, []);
-                        byDay.get(dayKey).push(Number(p.value) || 0);
-                    }
-                    const daysAsc = Array.from(byDay.keys()).sort();
-                    sparkData = daysAsc.map(day => {
-                        const dayVals = byDay.get(day);
-                        return dayVals.reduce((sum, v) => sum + v, 0);
-                    });
-                } else {
-                    // SSL - already daily totals
-                    totalFlow = points.reduce((acc, p) => acc + p.pulse, 0);
-                    sparkData = points.map(p => p.pulse);
+        allEventRows = [];
+        const chunkSize = 4;
+        for (let i = 0; i < wells.length; i += chunkSize) {
+            const chunk = wells.slice(i, i + chunkSize);
+            const batch = await Promise.all(chunk.map(async (well) => {
+                try {
+                    return await analyzeWell(well, headers, startIso, endIso);
+                } catch (error) {
+                    log(`Skipped ${well.site_name}: ${error.message}`);
+                    return [];
                 }
-            } else if (false) {
-                // FALLBACK: User insists data exists. Let's find *something* to plot (Solar or Battery)
-                // We need to re-fetch a backup trend just for the sparkline to prove "Site Activity"
-                
-            }
-
-            // Status Logic Update for SSL
-            if (site.source === "SonSetLink" && points.length > 0) site.status = "OK";
-            if (site.source === "SonSetLink" && points.length === 0) site.status = "No Data";
-
-            // Render Sparkline
-            const sparkSvg = renderSparkline(sparkData);
-
-            const tbody = el("reportTable").querySelector("tbody");
-            const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${site.source}</td>
-                <td>${site.site_id}</td>
-                <td>${site.name}</td>
-                <td>${startIso} to ${endIso}</td>
-                <td>${Math.round(totalFlow * 100) / 100}</td>
-                <td>${sparkSvg}</td>
-                <td style="color:${site.status && (site.status === 'OK' || site.status.startsWith('OK')) ? 'green' : 'red'}">${site.status || 'OK'}</td>
-            `;
-            tbody.appendChild(tr);
-
-            allReportRows.push({
-                source: site.source,
-                sysId: site.site_id,
-                name: site.name,
-                period: `${startIso}:${endIso}`,
-                total: totalFlow,
-                status: site.status || 'OK'
-            });
-
-        } catch (e) {
-            console.error(`Error processing ${site.site_id}`, e);
+            }));
+            batch.forEach((events) => allEventRows.push(...events));
+            log(`Processed ${Math.min(i + chunkSize, wells.length)} of ${wells.length} boreholes.`);
         }
+
+        const summary = buildEventSummary(allEventRows);
+        renderRows(allEventRows);
+        renderGroupedSummary(allEventRows);
+        populateBoreholeFilter(allEventRows);
+        renderCharts(allEventRows);
+        updateSummary(summary, wells.length, false);
+        saveCachedEvents(startStr, endStr, allEventRows, summary);
+        log(`Finished. Detected ${summary.total_events} pumping events.`);
+
+        el("btnExport").disabled = allEventRows.length === 0;
+        el("btnExportJson").disabled = allEventRows.length === 0;
+    } catch (error) {
+        log(`Report failed: ${error.message}`);
+        alert(`Report failed: ${error.message}`);
+    } finally {
+        btn.disabled = false;
     }
-
-    function renderSparkline(data) {
-        if (!data || data.length < 2) return `<span style="color:#ccc; font-size:0.8em">No Trend</span>`;
-
-        const width = 100;
-        const height = 30;
-        const min = Math.min(...data);
-        const max = Math.max(...data);
-        const range = max - min;
-
-        if (range === 0) return `<svg width="${width}" height="${height}" style="background:#fcfcfc"><path d="M0,${height / 2} L${width},${height / 2}" stroke="#999" stroke-width="1" fill="none"/></svg>`;
-
-        const step = width / (data.length - 1);
-        const pts = data.map((val, i) => {
-            const x = i * step;
-            const y = height - ((val - min) / range) * height; // Invert Y
-            return `${x.toFixed(1)},${y.toFixed(1)}`;
-        });
-
-        return `<svg width="${width}" height="${height}" style="background:#fcfcfc; border:1px solid #eee">
-              <path d="M${pts.join(' L')}" stroke="#007bff" stroke-width="1.5" fill="none" />
-            </svg>`;
-    }
-
-    // Expose rows for export (optional, already global)
 }
 
-// Attach listener when DOM is ready
-window.addEventListener('DOMContentLoaded', () => {
-    // Set default dates
+window.addEventListener("DOMContentLoaded", () => {
     const today = new Date();
     const lastMonth = new Date();
     lastMonth.setDate(today.getDate() - 30);
 
-    const startInput = el("startDate");
-    const endInput = el("endDate");
+    el("startDate").value = lastMonth.toISOString().split("T")[0];
+    el("endDate").value = today.toISOString().split("T")[0];
+    updateSummary({ total_events: 0, valid_events: 0, average_specific_capacity: null, flagged_events: 0 }, 0, false);
 
-    if (startInput) startInput.value = lastMonth.toISOString().split("T")[0];
-    if (endInput) endInput.value = today.toISOString().split("T")[0];
+    el("btnGenerate").addEventListener("click", () => generateReport(false));
+    el("btnRefresh").addEventListener("click", () => generateReport(true));
+    el("btnExport").addEventListener("click", exportCsv);
+    el("btnExportJson").addEventListener("click", exportJson);
+    el("boreholeFilter").addEventListener("change", () => renderCharts(allEventRows));
+    populateBoreholeFilter([]);
+    renderGroupedSummary([]);
+    renderCharts([]);
 
-    const btn = el("btnGenerate");
-    if (btn) btn.onclick = generateReport;
-
-    const btnExp = el("btnExport");
-    if (btnExp) {
-        btnExp.onclick = () => {
-            if (!allReportRows || !allReportRows.length) {
-                alert("No data to export.");
-                return;
-            }
-            let csv = "Source,System ID,Site Name,Date,Pulse Value\n";
-            csv += allReportRows.map(r => `${r.source},"${r.sysId}","${r.name}",${r.date},${r.count}`).join("\n");
-
-            const blob = new Blob([csv], { type: "text/csv" });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = "pulse_report.csv";
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        };
-    }
-
-    // Initial check
-    if (!getKeys().dcpToken && !getKeys().sslUser) {
-        log("⚠️ No API Keys found. Please configure them in the main dashboard first.");
+    if (!getKeys().dcpToken && !IS_LIVE) {
+        log("No local DCP key detected yet. Add one from the main dashboard settings if needed.");
     }
 });

@@ -18,7 +18,9 @@ A **static, browser-based dashboard** for monitoring solar-powered and hand-pump
 | **Dual-axis Site Chart** | Aggregated Flow (m³/h) as blue bars on left axis + Water Level Above Pump (m) as amber line on right axis |
 | **Malawi filter** | One-click toggle to show only sites within the Malawi bounding box |
 | **CSV Export** | Download summarised flow data for the selected period with one click |
-| **Login gate** | SHA-256 client-side password check; no credentials sent to any server |
+| **Event-based Q/S analysis** | Detects pumping episodes, calculates drawdown, maximum drawdown, pumped volume, and specific capacity per event |
+| **Grouped borehole analytics** | Summary table and trend charts for comparing boreholes over time |
+| **Login gate** | SHA-256 client-side password check with session-based page protection |
 | **CORS Proxy** | Cloudflare Worker routes API calls to avoid browser CORS restrictions |
 | **Fully static** | No backend required; runs entirely in the browser on GitHub Pages |
 | **Responsive** | Usable on desktop and phone |
@@ -177,16 +179,132 @@ The Worker URL is configured in `public/app.js` as `PROXY_BASE`.
 
 ### Local Development
 
-Run `start_dashboard.bat` — this starts a local Python HTTP server and opens Chrome with CORS disabled so API calls work without the proxy.
+Run `start_dashboard.bat` — this starts a local Python HTTP server and opens the site on `http://localhost:3000`. Localhost is now the preferred development origin because the CORS proxy explicitly allows it.
+
+---
+
+## Event-Based Specific Capacity Methodology
+
+The new analytics page estimates borehole specific capacity $Q/S$ for each detected pumping event. The method is designed for operational monitoring rather than formal aquifer test interpretation, so it emphasises repeatable event detection and quality flagging.
+
+### Purpose
+
+Specific capacity is calculated to answer a simple operational question:
+
+$$
+Q/S = \frac{\text{final pumping flow}}{\text{drawdown during the event}}
+$$
+
+where:
+
+- $Q$ = the last valid non-zero flow reading during the pumping episode in m³/h
+- $S$ = the drawdown between the groundwater level at the start of pumping and the groundwater level at the end of pumping in m
+
+### Event detection logic
+
+For every monitored DCP borehole:
+
+1. **Read hourly flow series** from the DCP Water API.
+2. **Mark pumping as active** whenever flow is greater than $0.1$ m³/h.
+3. **Start a new event** at the first above-threshold reading.
+4. **Store the initial groundwater level** from the nearest `water_level_above_pump` reading.
+5. **Keep the event open** while flow remains above threshold.
+6. **Accumulate pumped volume** using flow × elapsed time between readings.
+7. **Track the latest groundwater level** and the lowest groundwater level reached.
+8. **Close the event** when flow returns to zero or below the threshold.
+9. **Use the last non-zero flow** as the closing discharge for the event.
+
+### Metrics produced per event
+
+Each event row includes:
+
+- event start and end timestamps
+- event duration in hours
+- total pumped volume in m³
+- start and end groundwater level
+- drawdown in m
+- **maximum drawdown** reached during the event
+- recovery depth estimate
+- specific capacity in m³/h/m
+- quality score and diagnostic flags
+
+### Quality flags
+
+To prevent misleading results, the workflow flags events when:
+
+- groundwater level data is missing
+- drawdown is too small to compute a stable ratio
+- time gaps suggest incomplete telemetry
+- flow spikes or dips indicate noisy data
+- the event was still pumping when the report ended
+
+These flagged events are still shown, but they are marked for review and may not represent reliable hydrogeological performance.
+
+### Borehole summary and trends
+
+The event page also groups results by borehole and shows:
+
+- number of detected pumping events
+- number of valid specific-capacity events
+- total pumped volume over the chosen period
+- average specific capacity per borehole
+- average drawdown and maximum drawdown
+- trend charts for comparing performance through time
+
+### Interpretation note
+
+The values generated here are **screening indicators**. They are very useful for spotting declining performance, boreholes with abnormal drawdown, or assets that need maintenance. They are **not a substitute** for a controlled constant-rate pumping test.
+
+---
+
+## CORS and GitHub Pages Sharing Methodology
+
+The shared deployment uses a Cloudflare Worker as a CORS bridge between the browser and the upstream APIs.
+
+### How it works
+
+$$
+\text{Browser} \rightarrow \text{GitHub Pages / washways.org} \rightarrow \text{Cloudflare Worker} \rightarrow \text{DCP or SonSetLink API}
+$$
+
+The Worker:
+
+- accepts requests only from approved origins
+- forwards the request server-side
+- injects API secrets when needed
+- returns the response with matching `Access-Control-Allow-Origin` headers
+
+### Allowed shared origins
+
+The project is configured for these public origins:
+
+- `https://washways.org`
+- `https://www.washways.org`
+- `https://washways.github.io`
+
+For local development, use:
+
+- `http://localhost:3000`
+
+### Important local rule
+
+Use **localhost**, not `127.0.0.1`, for local testing. The proxy compares origins exactly, and a mismatch will trigger a browser CORS failure.
+
+### Sharing workflow
+
+1. Push the repository updates to `main`
+2. GitHub Actions deploys the `public` folder to GitHub Pages
+3. The live site loads through the Worker proxy
+4. Authorised users sign in through the login gate and can access both the main dashboard and the event analytics page
 
 ---
 
 ## Security Notes
 
-- API keys live only in `localStorage` — they are **never** in the source code or committed to git
+- API keys live only in `localStorage` or in Cloudflare Worker secrets for the shared deployment
 - `.env` is listed in `.gitignore` and will never be pushed
-- The login password is stored as a **SHA-256 hash** in `login.html` — it cannot be reversed to reveal the plaintext password
-- The Cloudflare Worker only accepts requests from whitelisted origins (`washways.org`, `washways.github.io`, `localhost`)
+- The login password is stored as a **SHA-256 hash** in `login.html` and enforced with session-based page checks
+- The Cloudflare Worker only accepts requests from whitelisted origins (`washways.org`, `washways.github.io`, and local testing origins)
 - SonSetLink credentials are visible inside network requests if devtools are open — this is unavoidable for a fully browser-based static app
 
 ---

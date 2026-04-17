@@ -84,6 +84,15 @@
 </head>
 
 <body>
+    <script>
+    (function () {
+      var isLocal = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+      if (!isLocal && sessionStorage.getItem('wash_auth') !== '1') {
+        var next = encodeURIComponent('pulse-report.html' + window.location.search);
+        window.location.replace('login.html?next=' + next);
+      }
+    })();
+    </script>
 
     <h1>Pulse Readings Daily Report</h1>
 

@@ -21,6 +21,15 @@
 </head>
 
 <body>
+    <script>
+    (function () {
+      var isLocal = /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname);
+      if (!isLocal && sessionStorage.getItem('wash_auth') !== '1') {
+        var next = encodeURIComponent('index.html' + window.location.search);
+        window.location.replace('login.html?next=' + next);
+      }
+    })();
+    </script>
 
     <!-- ===== SPLASH / WELCOME SCREEN ===== -->
     <div id="splashOverlay" class="splash-overlay" style="display:none;">
