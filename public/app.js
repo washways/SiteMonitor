@@ -1,10 +1,5 @@
 // ====================== CONFIG & STATE ======================
 
-if (location.hostname === "127.0.0.1") {
-    const redirected = location.href.replace("127.0.0.1", "localhost");
-    location.replace(redirected);
-}
-
 // ---- CORS Proxy ----
 // When running on the live site, API calls are routed through a
 // Cloudflare Worker to avoid CORS blocks. Update this URL after
@@ -12,17 +7,13 @@ if (location.hostname === "127.0.0.1") {
 const PROXY_BASE = "https://wash-proxy.washways1.workers.dev";  // ← UPDATE THIS
 
 const IS_LOCAL = !!location.hostname.match(/^(localhost|127\.0\.0\.1)$/);
-const FORCE_PROXY = window.location.search.includes("proxy=1") || localStorage.getItem("wash_force_proxy") === "1";
-if (window.location.search.includes("proxy=1")) {
-    localStorage.setItem("wash_force_proxy", "1");
-}
+const FORCE_PROXY = window.location.search.includes("proxy=1");
 const USE_PROXY = !IS_LOCAL || FORCE_PROXY;
 const IS_LIVE = USE_PROXY; // treat proxied localhost the same as live for credential injection
 
 // Base URLs: proxied on live site, direct on localhost
 const DCP_BASE = USE_PROXY ? `${PROXY_BASE}/dcp` : "https://api-dev.dcp.solar/water";
 const SSL_BASE = USE_PROXY ? `${PROXY_BASE}/ssl` : "https://sonsetlink.org/water/technical";
-const LOCAL_TEST_DCP_TOKEN = "0rlv0amn04vfojogn1523w43ujgk0k";
 
 // Malawi bbox filter
 const MALAWI_BBOX = { latMin: -17.2, latMax: -9.2, lonMin: 32.5, lonMax: 36.1 };
@@ -189,9 +180,8 @@ saveSettings.onclick = () => {
 };
 
 function getKeys() {
-    const savedToken = (localStorage.getItem("dcp_token") || "").trim();
     return {
-        dcpToken: savedToken || (IS_LOCAL ? LOCAL_TEST_DCP_TOKEN : ""),
+        dcpToken: (localStorage.getItem("dcp_token") || "").trim(),
         sslUser: (localStorage.getItem("ssl_user") || "").trim(),
         sslPass: (localStorage.getItem("ssl_pass") || "").trim()
     };
