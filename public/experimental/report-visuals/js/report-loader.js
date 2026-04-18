@@ -7,6 +7,9 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function (global) {
     const Utils = global.SiteMonitorExperimentalVizUtils;
     const STORAGE_KEY = "sitemonitor.experimental.visualReport";
+    const SETTINGS_KEY = "sitemonitor.experimental.visualSettings";
+    let dcpAdapter = null;
+    let sslAdapter = null;
 
     function normalizeReport(report = {}) {
         return {
@@ -46,6 +49,27 @@
         }
     }
 
+    function safeSettingsSet(settings) {
+        try {
+            localStorage.setItem(SETTINGS_KEY, JSON.stringify({
+                ...settings,
+                startDate: Utils.toDateString(settings.window?.start || settings.startDate),
+                endDate: Utils.toDateString(settings.window?.end || settings.endDate)
+            }));
+        } catch (error) {
+            // ignore storage issues in the experimental layer
+        }
+    }
+
+    function safeSettingsGet() {
+        try {
+            const raw = localStorage.getItem(SETTINGS_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
     function buildIndex(report) {
         const baseRows = report.health_summary_table.length
             ? report.health_summary_table
@@ -68,9 +92,182 @@
         target.style.color = isError ? "#b91c1c" : "#334155";
     }
 
+    function getQueryParams() {
+        return new URLSearchParams(global.location?.search || "");
+    }
+
     function getQueryReportUrl() {
-        const params = new URLSearchParams(window.location.search);
-        return params.get("report") || "";
+        return getQueryParams().get("report") || "";
+    }
+
+    function buildDefaultAnalysisSettings() {
+        const params = getQueryParams();
+        const today = new Date();
+        const start = new Date();
+        start.setDate(today.getDate() - 30);
+        const saved = safeSettingsGet() || {};
+
+        return {
+            provider: params.get("provider") || saved.provider || "DCP",
+            startDate: params.get("startDate") || saved.startDate || Utils.toDateString(start),
+            endDate: params.get("endDate") || saved.endDate || Utils.toDateString(today),
+            maxSources: Number(params.get("maxSources") || saved.maxSources || 8),
+            flowThreshold: Number(params.get("flowThreshold") || saved.flowThreshold || 0.1),
+            graceHours: Number(params.get("graceHours") || saved.graceHours || 2)
+        };
+    }
+
+    function populateAnalysisControls(root = document) {
+        const byId = (id) => root.getElementById(id);
+        const defaults = buildDefaultAnalysisSettings();
+        if (byId("analysisProvider") && !byId("analysisProvider").value) byId("analysisProvider").value = defaults.provider;
+        if (byId("analysisStartDate") && !byId("analysisStartDate").value) byId("analysisStartDate").value = defaults.startDate;
+        if (byId("analysisEndDate") && !byId("analysisEndDate").value) byId("analysisEndDate").value = defaults.endDate;
+        if (byId("analysisMaxSources") && !byId("analysisMaxSources").value) byId("analysisMaxSources").value = defaults.maxSources;
+        if (byId("analysisFlowThreshold") && !byId("analysisFlowThreshold").value) byId("analysisFlowThreshold").value = defaults.flowThreshold;
+        if (byId("analysisGraceHours") && !byId("analysisGraceHours").value) byId("analysisGraceHours").value = defaults.graceHours;
+    }
+
+    function getAnalysisSettings(root = document) {
+        const byId = (id) => root.getElementById(id);
+        const startDate = byId("analysisStartDate")?.value || "";
+        const endDate = byId("analysisEndDate")?.value || "";
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) {
+            throw new Error("Select a valid analysis date window.");
+        }
+
+        return {
+            provider: byId("analysisProvider")?.value || "DCP",
+            maxSources: Math.min(54, Math.max(1, Math.round(Number(byId("analysisMaxSources")?.value || 8) || 8))),
+            flowThreshold: Number(byId("analysisFlowThreshold")?.value || 0.1),
+            graceHours: Number(byId("analysisGraceHours")?.value || 2),
+            window: { start, end }
+        };
+    }
+
+    function ensureAnalyticsModulesReady() {
+        const Exp = global.SiteMonitorExperimental || {};
+        if (!Exp.DcpAdapter?.DcpTelemetryAdapter || !Exp.SonSetLinkAdapter?.SonSetLinkTelemetryAdapter || !Exp.CleanBoreholeSeries || !Exp.DetectPumpingEventsExperimental || !Exp.ComputeEventMetrics || !Exp.DailyAnalytics || !Exp.RollingAnalytics || !Exp.BoreholeAnalytics || !Exp.NetworkAnalytics || !Exp.InterpretationOutputs) {
+            throw new Error("The live analytics modules are not available on this page.");
+        }
+        return Exp;
+    }
+
+    function getAdapters(Exp) {
+        if (!dcpAdapter) dcpAdapter = new Exp.DcpAdapter.DcpTelemetryAdapter();
+        if (!sslAdapter) sslAdapter = new Exp.SonSetLinkAdapter.SonSetLinkTelemetryAdapter();
+        return { dcpAdapter, sslAdapter };
+    }
+
+    async function analyzeSource(Exp, sourceRef, options = {}) {
+        const { dcpAdapter: dcp, sslAdapter: ssl } = getAdapters(Exp);
+        const adapter = sourceRef?.provider === "SonSetLink" ? ssl : dcp;
+        const raw = await adapter.fetchTelemetry(sourceRef, options.window, { deepScan: false, useProxy: true });
+        const normalized = adapter.normalize(raw);
+        const cleaned = Exp.CleanBoreholeSeries.cleanBoreholeSeries(normalized, {});
+        const detected = Exp.DetectPumpingEventsExperimental.detectPumpingEvents(cleaned, {
+            flowThreshold: options.flowThreshold,
+            graceHours: options.graceHours
+        });
+        const eventRows = Exp.ComputeEventMetrics.computeEventMetrics(detected, { minDrawdownM: 0.05 });
+        const report = {
+            provider: sourceRef.provider,
+            raw,
+            normalized,
+            cleaned,
+            detected,
+            event_rows: eventRows
+        };
+        const dailyRows = Exp.DailyAnalytics.computeDailyAnalytics(report, { flowThreshold: options.flowThreshold });
+        const rollingRows = Exp.RollingAnalytics.computeRollingAnalytics(dailyRows, dailyRows.event_detail_rows || [], {});
+        const boreholeSummary = Exp.BoreholeAnalytics.computeBoreholeAnalytics(normalized.source, dailyRows, rollingRows, {});
+
+        return {
+            report,
+            daily_rows: dailyRows,
+            rolling_rows: rollingRows,
+            borehole_summary: boreholeSummary
+        };
+    }
+
+    async function runLiveAnalysis(options = {}) {
+        const root = options.root || document;
+        const statusTarget = options.statusTarget || null;
+        const settings = options.settings || getAnalysisSettings(root);
+        const Exp = ensureAnalyticsModulesReady();
+        const { dcpAdapter: dcp, sslAdapter: ssl } = getAdapters(Exp);
+        const adapter = settings.provider === "SonSetLink" ? ssl : dcp;
+
+        setStatus(statusTarget, "Loading real telemetry sources for the cohort analysis...");
+        safeSettingsSet(settings);
+
+        const allSources = await adapter.listSources({ useProxy: true });
+        const selected = [...allSources]
+            .sort((a, b) => {
+                const aTs = Date.parse(a.metadata?.most_recent_tx || a.metadata?.last_seen || 0) || 0;
+                const bTs = Date.parse(b.metadata?.most_recent_tx || b.metadata?.last_seen || 0) || 0;
+                return bTs - aTs;
+            })
+            .slice(0, settings.maxSources);
+
+        if (!selected.length) {
+            throw new Error("No sources were available for the selected provider.");
+        }
+
+        const dailyRows = [];
+        const rollingRows = [];
+        const boreholeRows = [];
+        const sourceReports = [];
+        const batchSize = settings.provider === "SonSetLink" ? 3 : 4;
+
+        for (let i = 0; i < selected.length; i += batchSize) {
+            const batch = selected.slice(i, i + batchSize);
+            const results = await Promise.all(batch.map(async (source) => {
+                try {
+                    return await analyzeSource(Exp, source, settings);
+                } catch (error) {
+                    return { error, source };
+                }
+            }));
+
+            results.forEach((result) => {
+                if (!result || result.error) return;
+                dailyRows.push(...(result.daily_rows || []));
+                rollingRows.push(...(result.rolling_rows || []));
+                boreholeRows.push(result.borehole_summary);
+                sourceReports.push(result.report);
+            });
+
+            setStatus(statusTarget, `Processed ${Math.min(i + batchSize, selected.length)} of ${selected.length} sources using real telemetry.`);
+        }
+
+        if (!boreholeRows.length) {
+            throw new Error("No telemetry could be processed for the selected cohort.");
+        }
+
+        const network = Exp.NetworkAnalytics.computeNetworkAnalytics(boreholeRows, {});
+        const interpretation = Exp.InterpretationOutputs.computeInterpretationOutputs(boreholeRows, network, {});
+        const report = {
+            exported_at: new Date().toISOString(),
+            provider: settings.provider,
+            date_window: {
+                start: settings.window.start.toISOString(),
+                end: settings.window.end.toISOString()
+            },
+            analytics_note: "Experimental isolated analytics layer using real normalized telemetry and event outputs.",
+            daily_rows: dailyRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
+            rolling_rows: rollingRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
+            borehole_summary_table: boreholeRows.sort((a, b) => String(a.display_name).localeCompare(String(b.display_name))),
+            ...network,
+            ...interpretation,
+            source_reports: sourceReports
+        };
+
+        safeStorageSet(report);
+        setStatus(statusTarget, `Completed cohort analysis for ${boreholeRows.length} sources using the real telemetry pipeline.`);
+        return buildIndex(report);
     }
 
     async function loadReport(options = {}) {
@@ -78,7 +275,7 @@
         const requestedUrl = options.url || getQueryReportUrl() || options.defaultUrl || "";
 
         try {
-            setStatus(statusTarget, "Loading report JSON...");
+            setStatus(statusTarget, "Loading report data...");
             let report = null;
             let sourceLabel = "browser storage";
 
@@ -87,14 +284,14 @@
                 sourceLabel = requestedUrl;
             } else {
                 report = safeStorageGet();
-                if (!report && options.defaultUrl) {
-                    report = await fetchJson(options.defaultUrl);
-                    sourceLabel = options.defaultUrl;
-                }
+            }
+
+            if (!report && options.runLiveIfMissing) {
+                return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: options.settings });
             }
 
             if (!report) {
-                throw new Error("No report JSON is available yet. Load a saved analytics report file or provide a report URL.");
+                throw new Error("No report is loaded yet. Run the live analysis above or optionally load a saved report.");
             }
 
             safeStorageSet(report);
@@ -171,9 +368,13 @@
 
     return {
         STORAGE_KEY,
+        SETTINGS_KEY,
         loadReport,
+        runLiveAnalysis,
         readUploadedFile,
         getFilterValues,
+        getAnalysisSettings,
+        populateAnalysisControls,
         applyFilters,
         buildIndex,
         setStatus

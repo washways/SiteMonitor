@@ -1,7 +1,7 @@
 (function () {
     const Utils = window.SiteMonitorExperimentalVizUtils;
     const Loader = window.SiteMonitorExperimentalVizLoader;
-    const DEFAULT_REPORT_URL = "examples/sample-analytics-report.json";
+    const DEFAULT_REPORT_URL = "";
     let reportIndex = null;
 
     const el = (id) => document.getElementById(id);
@@ -31,6 +31,12 @@
         target.innerHTML = rows.map((row) => `<option value="${Utils.escapeHtml(row.borehole_id)}">${Utils.escapeHtml(row.display_name || row.borehole_id)}</option>`).join("");
         const selected = currentParams().get("borehole");
         if (selected) target.value = selected;
+
+        const dates = (index.report.daily_rows || []).map((row) => row.date).filter(Boolean).sort();
+        if (dates.length) {
+            if (el("filterStartDate") && !el("filterStartDate").value) el("filterStartDate").value = dates[0];
+            if (el("filterEndDate") && !el("filterEndDate").value) el("filterEndDate").value = dates[dates.length - 1];
+        }
     }
 
     function renderHeader(row, dailyRows = []) {
@@ -245,13 +251,30 @@
     }
 
     async function init() {
+        Loader.populateAnalysisControls(document);
+
         try {
-            reportIndex = await Loader.loadReport({ defaultUrl: DEFAULT_REPORT_URL, statusTarget: el("pageStatus") });
+            reportIndex = await Loader.loadReport({
+                defaultUrl: DEFAULT_REPORT_URL,
+                statusTarget: el("pageStatus"),
+                root: document,
+                runLiveIfMissing: true
+            });
             populateBoreholes(reportIndex);
             renderAll();
         } catch (error) {
             setStatus(error.message, true);
         }
+
+        el("btnRunLiveAnalysis")?.addEventListener("click", async () => {
+            try {
+                reportIndex = await Loader.runLiveAnalysis({ root: document, statusTarget: el("pageStatus") });
+                populateBoreholes(reportIndex);
+                renderAll();
+            } catch (error) {
+                setStatus(error.message, true);
+            }
+        });
 
         el("reportFile")?.addEventListener("change", async (event) => {
             const file = event.target.files?.[0];
@@ -262,12 +285,12 @@
         });
 
         el("loadReportUrl")?.addEventListener("click", async () => {
-            reportIndex = await Loader.loadReport({ url: el("reportUrl")?.value || DEFAULT_REPORT_URL, statusTarget: el("pageStatus") });
+            reportIndex = await Loader.loadReport({ url: el("reportUrl")?.value || "", statusTarget: el("pageStatus") });
             populateBoreholes(reportIndex);
             renderAll();
         });
 
-        document.querySelectorAll(".filters-grid input, .filters-grid select").forEach((node) => node.addEventListener("change", renderAll));
+        document.querySelectorAll("input[id^='filter'], select[id^='filter']").forEach((node) => node.addEventListener("change", renderAll));
     }
 
     window.addEventListener("DOMContentLoaded", init);

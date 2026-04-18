@@ -102,7 +102,15 @@
 
     function toDateString(value) {
         if (!value) return "";
-        return String(value).slice(0, 10);
+        if (value instanceof Date) {
+            return value.toISOString().split("T")[0];
+        }
+        const raw = String(value);
+        if (/^\d{4}-\d{2}-\d{2}/.test(raw)) {
+            return raw.slice(0, 10);
+        }
+        const parsed = new Date(raw);
+        return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
     }
 
     return {

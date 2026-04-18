@@ -41,10 +41,12 @@ The visualization layer is isolated because:
 
 ## Loading a report
 
-These pages can use:
+These pages now support a direct live workflow:
 
-- the included sample report JSON in this folder
-- a saved exported analytics report JSON loaded through the file picker
-- a report URL passed through the query string
+- set provider, date window, and cohort limits on the page itself
+- run the existing telemetry analytics pipeline directly with no upload required
+- move between pages while reusing the current cohort report from browser storage
+
+Optional saved-report loading is still available for review, but it is no longer required.
 
 The visual layer is for review only until explicitly promoted.

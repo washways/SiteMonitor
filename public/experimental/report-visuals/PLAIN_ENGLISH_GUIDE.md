@@ -2,6 +2,8 @@
 
 This experimental visualization layer is meant to make the analytics report easier to understand for operational decisions.
 
+You do not need to upload data first. Each page can now run a fresh multi-borehole cohort analysis directly from the existing telemetry pipeline.
+
 ## What each page is for
 
 ### Network overview

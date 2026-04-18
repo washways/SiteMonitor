@@ -15,11 +15,23 @@
     </header>
     <main>
         <section class="panel">
-            <h2>Load analytics report JSON</h2>
+            <h2>Run live cohort analysis</h2>
+            <p class="viz-note">No upload is required. Set the cohort window and run analysis directly from the existing telemetry pipeline.</p>
+            <div class="filters-grid">
+                <label>Provider<select id="analysisProvider"><option value="DCP">DCP</option><option value="SonSetLink">SonSetLink</option></select></label>
+                <label>Start date<input id="analysisStartDate" type="date" /></label>
+                <label>End date<input id="analysisEndDate" type="date" /></label>
+                <label>Max sources<input id="analysisMaxSources" type="number" min="1" max="54" step="1" value="8" /></label>
+                <label>Flow threshold<input id="analysisFlowThreshold" type="number" step="0.01" value="0.1" /></label>
+                <label>Grace hours<input id="analysisGraceHours" type="number" step="0.5" value="2" /></label>
+            </div>
+            <div class="actions">
+                <button id="btnRunLiveAnalysis">Run analysis</button>
+                <button id="loadReportUrl" class="secondary">Load saved report URL</button>
+            </div>
             <div class="loader-row">
-                <label>Report URL<input id="reportUrl" placeholder="examples/sample-analytics-report.json" /></label>
-                <label>Upload report JSON<input id="reportFile" type="file" accept="application/json" /></label>
-                <button id="loadReportUrl">Load report</button>
+                <label>Optional report URL<input id="reportUrl" placeholder="examples/sample-analytics-report.json" /></label>
+                <label>Optional report JSON<input id="reportFile" type="file" accept="application/json" /></label>
             </div>
             <p id="pageStatus">Ready.</p>
         </section>
@@ -65,6 +77,20 @@
     </main>
 
     <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <script src="../js/normalize/telemetry-schema.js?v=20260418k"></script>
+    <script src="../js/normalize/normalize-bundle.js?v=20260418k"></script>
+    <script src="../js/adapters/base-adapter.js?v=20260418k"></script>
+    <script src="../js/adapters/dcp-adapter.js?v=20260418k"></script>
+    <script src="../js/adapters/sonsetlink-adapter.js?v=20260418k"></script>
+    <script src="../js/cleaning/qc-flags.js?v=20260418k"></script>
+    <script src="../js/cleaning/clean-borehole-series.js?v=20260418k"></script>
+    <script src="../js/detection/detect-pumping-events.js?v=20260418k"></script>
+    <script src="../js/metrics/compute-event-metrics.js?v=20260418k"></script>
+    <script src="../js/analytics/compute-daily-analytics.js?v=20260418k"></script>
+    <script src="../js/analytics/compute-rolling-analytics.js?v=20260418k"></script>
+    <script src="../js/analytics/compute-borehole-analytics.js?v=20260418k"></script>
+    <script src="../js/analytics/compute-network-analytics.js?v=20260418k"></script>
+    <script src="../js/analytics/compute-interpretation-outputs.js?v=20260418k"></script>
     <script src="js/report-utils.js"></script>
     <script src="js/report-loader.js"></script>
     <script src="js/network-overview.js"></script>

@@ -1,7 +1,7 @@
 (function () {
     const Utils = window.SiteMonitorExperimentalVizUtils;
     const Loader = window.SiteMonitorExperimentalVizLoader;
-    const DEFAULT_REPORT_URL = "examples/sample-analytics-report.json";
+    const DEFAULT_REPORT_URL = "";
     let reportIndex = null;
     let sortState = { key: "maintenance_priority_score", direction: "desc" };
 
@@ -249,13 +249,30 @@
     }
 
     async function init() {
+        Loader.populateAnalysisControls(document);
+
         try {
-            reportIndex = await Loader.loadReport({ defaultUrl: DEFAULT_REPORT_URL, statusTarget: el("pageStatus") });
+            reportIndex = await Loader.loadReport({
+                defaultUrl: DEFAULT_REPORT_URL,
+                statusTarget: el("pageStatus"),
+                root: document,
+                runLiveIfMissing: true
+            });
             populateFilters(reportIndex);
             renderAll();
         } catch (error) {
             setStatus(error.message, true);
         }
+
+        el("btnRunLiveAnalysis")?.addEventListener("click", async () => {
+            try {
+                reportIndex = await Loader.runLiveAnalysis({ root: document, statusTarget: el("pageStatus") });
+                populateFilters(reportIndex);
+                renderAll();
+            } catch (error) {
+                setStatus(error.message, true);
+            }
+        });
 
         el("reportFile")?.addEventListener("change", async (event) => {
             const file = event.target.files?.[0];
@@ -267,13 +284,13 @@
         });
 
         el("loadReportUrl")?.addEventListener("click", async () => {
-            const url = el("reportUrl")?.value || DEFAULT_REPORT_URL;
+            const url = el("reportUrl")?.value || "";
             reportIndex = await Loader.loadReport({ url, statusTarget: el("pageStatus") });
             populateFilters(reportIndex);
             renderAll();
         });
 
-        document.querySelectorAll(".filters-grid input, .filters-grid select").forEach((node) => {
+        document.querySelectorAll("input[id^='filter'], select[id^='filter']").forEach((node) => {
             node.addEventListener("change", renderAll);
         });
     }
