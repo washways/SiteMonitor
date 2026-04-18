@@ -27,21 +27,53 @@ const logEl = el("statusLog");
 
 let allEventRows = [];
 let lastDateRange = null;
+const MALAWI_BBOX = { latMin: -17.2, latMax: -9.2, lonMin: 32.5, lonMax: 36.1 };
 
 function round(value, digits = 3) {
     return Number.isFinite(value) ? Number(value.toFixed(digits)) : null;
+}
+
+function inMalawiBBox(lat, lon) {
+    const la = Number(lat);
+    const lo = Number(lon);
+    if (!Number.isFinite(la) || !Number.isFinite(lo)) return false;
+    return la >= MALAWI_BBOX.latMin && la <= MALAWI_BBOX.latMax && lo >= MALAWI_BBOX.lonMin && lo <= MALAWI_BBOX.lonMax;
 }
 
 function getSelectedSource() {
     return el("sourceFilter")?.value || "";
 }
 
+function getSelectedCountry() {
+    return el("countryFilter")?.value || "";
+}
+
+function getSelectedActivityDays() {
+    return Number(el("activityFilter")?.value || 0);
+}
+
+function getSelectedResultFilter() {
+    return el("resultFilter")?.value || "";
+}
+
+function getSelectedScanMode() {
+    return el("scanMode")?.value || "fast";
+}
+
 function getDisplayedEvents() {
     const selectedSource = getSelectedSource();
     const selectedSite = el("boreholeFilter")?.value || "";
+    const resultFilter = getSelectedResultFilter();
+
     return allEventRows.filter((event) => {
         if (selectedSource && event.source !== selectedSource) return false;
         if (selectedSite && event.well_id !== selectedSite) return false;
+        if (resultFilter === "valid" && !Number.isFinite(event.specific_capacity_m3h_per_m)) return false;
+        if (resultFilter === "screening" && !event.flags?.approximate_daily_event) return false;
+        if (resultFilter === "flagged") {
+            const flagged = Object.entries(event.flags || {}).some(([key, value]) => value && key !== "approximate_daily_event");
+            if (!flagged) return false;
+        }
         return true;
     });
 }
@@ -64,7 +96,11 @@ function getKeys() {
 }
 
 function cacheKey(startStr, endStr) {
-    return `siteMonitor_specific_capacity_v3_${startStr}_${endStr}`;
+    const source = getSelectedSource() || "all";
+    const country = getSelectedCountry() || "all";
+    const activity = getSelectedActivityDays() || 0;
+    const scanMode = getSelectedScanMode() || "fast";
+    return `siteMonitor_specific_capacity_v4_${startStr}_${endStr}_${source}_${country}_${activity}_${scanMode}`;
 }
 
 function loadCachedEvents(startStr, endStr) {
@@ -167,17 +203,10 @@ async function sslSites() {
 
 async function sslSeries(siteId, serial, startUtc, endUtc) {
     const { sslUser, sslPass } = getKeys();
-    const endpoints = [
-        "usage.json.php",
-        "status.json.php",
-        "diag.json.php",
-        "test.json.php",
-        "usage1_msg.json.php",
-        "usage8_msg.json.php",
-        "usage12_msg.json.php"
-    ];
+    const scanMode = getSelectedScanMode();
+    const endpoints = ["usage.json.php", "status.json.php", "diag.json.php", "test.json.php", "usage1_msg.json.php", "usage8_msg.json.php", "usage12_msg.json.php"];
 
-    const merged = [];
+    const mergedRows = [];
     const seen = new Set();
 
     for (const ep of endpoints) {
@@ -192,21 +221,26 @@ async function sslSeries(siteId, serial, startUtc, endUtc) {
         url.searchParams.set("feature[]", "decumulation");
 
         try {
-            const rows = await fetchJson(url.toString());
+            const rows = await fetchJson(url.toString(), {}, true);
             if (!Array.isArray(rows) || !rows.length) continue;
+
+            if (scanMode === "fast") {
+                return { rows: rows.map((row) => ({ ...row, _endpoint: ep })) };
+            }
+
             for (const row of rows) {
-                const key = `${row.adjusted_timestamp || row.timestamp || ""}|${row.flow1 || ""}|${row.deflow || ""}`;
+                const key = `${row.adjusted_timestamp || row.timestamp || ""}|${row.flow1 || ""}|${row.deflow || ""}|${ep}`;
                 if (seen.has(key)) continue;
                 seen.add(key);
-                merged.push({ ...row, _endpoint: ep });
+                mergedRows.push({ ...row, _endpoint: ep });
             }
         } catch {
-            // Some SonSetLink endpoints are unavailable in some deployments.
+            // Try the next available SonSetLink table.
         }
     }
 
-    merged.sort((a, b) => (parseSslTimestamp(a.adjusted_timestamp || a.timestamp) || 0) - (parseSslTimestamp(b.adjusted_timestamp || b.timestamp) || 0));
-    return { rows: merged };
+    mergedRows.sort((a, b) => (parseSslTimestamp(a.adjusted_timestamp || a.timestamp) || 0) - (parseSslTimestamp(b.adjusted_timestamp || b.timestamp) || 0));
+    return { rows: mergedRows };
 }
 
 function buildSslEvents(site, rows) {
@@ -279,11 +313,20 @@ async function dcpWells(headers) {
     const rows = await fetchJson(`${DCP_BASE}/v2/wells`, headers ? { headers } : {});
     if (!Array.isArray(rows)) return [];
 
-    return rows.map((row) => ({
-        source: "DCP",
-        site_id: String(row.well_id),
-        site_name: String(row.name || row.well_id || "Unknown Borehole")
-    }));
+    return rows.map((row) => {
+        const lat = Number(row.location?.lat);
+        const lon = Number(row.location?.lon);
+        const country = inMalawiBBox(lat, lon) ? "Malawi" : "Unknown";
+        return {
+            source: "DCP",
+            site_id: String(row.well_id),
+            site_name: String(row.name || row.well_id || "Unknown Borehole"),
+            lat,
+            lon,
+            country,
+            last_updated: row.last_seen ? new Date(row.last_seen).getTime() : null
+        };
+    });
 }
 
 async function dcpSeries(headers, wellId, parameter, startIso, endIso) {
@@ -305,9 +348,9 @@ async function dcpSeries(headers, wellId, parameter, startIso, endIso) {
         }));
 }
 
-function updateSummary(summary, boreholeCount, cached = false) {
-    const dcpCount = allEventRows.filter((event) => event.source === "DCP").length;
-    const sslCount = allEventRows.filter((event) => event.source === "SonSetLink").length;
+function updateSummary(summary, boreholeCount, cached = false, events = allEventRows) {
+    const dcpCount = events.filter((event) => event.source === "DCP").length;
+    const sslCount = events.filter((event) => event.source === "SonSetLink").length;
     el("summaryBoreholes").textContent = boreholeCount || 0;
     el("summaryEvents").textContent = summary.total_events || 0;
     if (el("summaryDcp")) el("summaryDcp").textContent = dcpCount;
@@ -317,11 +360,12 @@ function updateSummary(summary, boreholeCount, cached = false) {
         ? summary.average_specific_capacity.toFixed(2)
         : "—";
     el("summaryFlagged").textContent = summary.flagged_events || 0;
-    const selectedSource = getSelectedSource();
-    const filterNote = selectedSource ? ` Filtered to ${selectedSource}.` : "";
+    const sourceNote = getSelectedSource() ? ` API=${getSelectedSource()}.` : "";
+    const countryNote = getSelectedCountry() ? ` Country=${getSelectedCountry()}.` : "";
+    const activityNote = getSelectedActivityDays() ? ` Activity=${getSelectedActivityDays()}d.` : "";
     el("cacheStatus").textContent = (cached
         ? "Showing cached analysis from local storage."
-        : "Showing fresh analysis.") + filterNote;
+        : "Showing fresh analysis.") + sourceNote + countryNote + activityNote;
 }
 
 function formatDateTime(ts) {
@@ -542,15 +586,17 @@ function downloadText(content, filename, type) {
 }
 
 function exportCsv() {
-    if (!allEventRows.length) {
+    const displayedEvents = getDisplayedEvents();
+    if (!displayedEvents.length) {
         alert("No pumping-event rows are available yet.");
         return;
     }
-    downloadText(buildEventCsv(allEventRows), "specific_capacity_events.csv", "text/csv;charset=utf-8");
+    downloadText(buildEventCsv(displayedEvents), "specific_capacity_events.csv", "text/csv;charset=utf-8");
 }
 
 function exportJson() {
-    if (!allEventRows.length) {
+    const displayedEvents = getDisplayedEvents();
+    if (!displayedEvents.length) {
         alert("No pumping-event rows are available yet.");
         return;
     }
@@ -559,8 +605,8 @@ function exportJson() {
         exported_at: new Date().toISOString(),
         timezone: "UTC+2 (Africa/Blantyre)",
         date_range: lastDateRange,
-        summary: buildEventSummary(allEventRows),
-        events: allEventRows
+        summary: buildEventSummary(displayedEvents),
+        events: displayedEvents
     };
 
     downloadText(JSON.stringify(payload, null, 2), "specific_capacity_events.json", "application/json;charset=utf-8");
@@ -637,17 +683,42 @@ async function generateReport(forceRefresh = false) {
     }
 
     try {
+        const selectedSource = getSelectedSource();
+        const selectedCountry = getSelectedCountry();
+        const activityDays = getSelectedActivityDays();
+        const shouldFetchDcp = !selectedSource || selectedSource === "DCP";
+        const shouldFetchSsl = !selectedSource || selectedSource === "SonSetLink";
+
         log("Fetching monitored DCP and SonSetLink sites...");
         const headers = dcpToken ? { "X-Api-Key": dcpToken, "Accept": "application/json" } : { "Accept": "application/json" };
         const [dcpSites, sslSiteList] = await Promise.all([
-            (IS_LIVE || dcpToken) ? dcpWells(headers) : Promise.resolve([]),
-            (IS_LIVE || hasLocalSslCreds) ? sslSites() : Promise.resolve([])
+            shouldFetchDcp && (IS_LIVE || dcpToken) ? dcpWells(headers) : Promise.resolve([]),
+            shouldFetchSsl && (IS_LIVE || hasLocalSslCreds) ? sslSites() : Promise.resolve([])
         ]);
-        const monitoredSites = [...dcpSites, ...sslSiteList];
-        log(`Found ${dcpSites.length} DCP boreholes and ${sslSiteList.length} SonSetLink sites. Analysing events...`);
+
+        let monitoredSites = [...dcpSites, ...sslSiteList];
+        if (selectedCountry) {
+            monitoredSites = monitoredSites.filter((site) => (site.country || "Unknown") === selectedCountry);
+        }
+        if (activityDays > 0) {
+            const cutoff = Date.now() - (activityDays * 24 * 60 * 60 * 1000);
+            monitoredSites = monitoredSites.filter((site) => Number.isFinite(site.last_updated) && site.last_updated >= cutoff);
+        }
+
+        if (!monitoredSites.length) {
+            allEventRows = [];
+            populateBoreholeFilter([]);
+            refreshView(0, false);
+            log("No sites matched the selected country, API, and activity filters.");
+            return;
+        }
+
+        const dcpSelected = monitoredSites.filter((site) => site.source === "DCP").length;
+        const sslSelected = monitoredSites.filter((site) => site.source === "SonSetLink").length;
+        log(`Found ${dcpSites.length} DCP boreholes and ${sslSiteList.length} SonSetLink sites. Analysing ${monitoredSites.length} filtered sites (${dcpSelected} DCP, ${sslSelected} SonSetLink)...`);
 
         allEventRows = [];
-        const chunkSize = 4;
+        const chunkSize = getSelectedScanMode() === "deep" ? 4 : 8;
         for (let i = 0; i < monitoredSites.length; i += chunkSize) {
             const chunk = monitoredSites.slice(i, i + chunkSize);
             const batch = await Promise.all(chunk.map(async (site) => {
@@ -687,7 +758,7 @@ function refreshView(totalSiteCount = new Set(allEventRows.map((event) => event.
     renderRows(displayedEvents);
     renderGroupedSummary(displayedEvents);
     renderCharts(displayedEvents);
-    updateSummary(buildEventSummary(allEventRows), totalSiteCount, cached);
+    updateSummary(buildEventSummary(displayedEvents), totalSiteCount, cached, displayedEvents);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -707,6 +778,10 @@ window.addEventListener("DOMContentLoaded", () => {
         populateBoreholeFilter(allEventRows.filter((event) => !getSelectedSource() || event.source === getSelectedSource()));
         refreshView();
     });
+    el("resultFilter").addEventListener("change", () => refreshView());
+    el("countryFilter").addEventListener("change", () => log("Country filter changed. Click Run Analysis to reload the selected scope."));
+    el("activityFilter").addEventListener("change", () => log("Activity filter changed. Click Run Analysis to reload the selected scope."));
+    el("scanMode").addEventListener("change", () => log("Scan mode changed. Click Run Analysis to apply the faster or deeper SonSetLink scan."));
     el("boreholeFilter").addEventListener("change", () => refreshView());
     populateBoreholeFilter([]);
     renderGroupedSummary([]);

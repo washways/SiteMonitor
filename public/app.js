@@ -304,18 +304,7 @@ async function sslSites() {
 
 async function sslSeries(siteId, serial, startUtc, endUtc) {
     const { sslUser, sslPass } = getKeys();
-    const endpoints = [
-        "usage.json.php",
-        "status.json.php",
-        "diag.json.php",
-        "test.json.php",
-        "usage1_msg.json.php",
-        "usage8_msg.json.php",
-        "usage12_msg.json.php"
-    ];
-
-    const merged = [];
-    const seen = new Set();
+    const endpoints = ["usage.json.php", "status.json.php", "diag.json.php", "test.json.php", "usage1_msg.json.php", "usage8_msg.json.php", "usage12_msg.json.php"];
 
     for (const ep of endpoints) {
         const url = new URL(`${SSL_BASE}/${ep}`);
@@ -330,20 +319,15 @@ async function sslSeries(siteId, serial, startUtc, endUtc) {
 
         try {
             const j = await fetchJson(url.toString(), {}, true);
-            if (!Array.isArray(j) || !j.length) continue;
-            for (const row of j) {
-                const key = `${row.adjusted_timestamp || row.timestamp || ""}|${row.flow1 || ""}|${row.deflow || ""}`;
-                if (seen.has(key)) continue;
-                seen.add(key);
-                merged.push({ ...row, _endpoint: ep });
+            if (Array.isArray(j) && j.length) {
+                return { rows: j.map(row => ({ ...row, _endpoint: ep })) };
             }
         } catch {
             // Some SonSetLink endpoints are not available for all deployments.
         }
     }
 
-    merged.sort((a, b) => parseSslTimestamp(a.adjusted_timestamp || a.timestamp) - parseSslTimestamp(b.adjusted_timestamp || b.timestamp));
-    return { rows: merged };
+    return { rows: [] };
 }
 
 // --- DCP WATER (v2) ---
@@ -645,7 +629,9 @@ async function loadSites() {
     }
 
     logStatus("Loading sites...");
-    const malawiOnly = el("malawiOnly").checked;
+    const selectedCountry = el("countryFilter")?.value || "";
+    const selectedApi = el("apiFilter")?.value || "";
+    const recentDays = Number(el("recentFilter")?.value || 0);
 
     // Parallel Fetch
     const promises = [];
@@ -706,12 +692,25 @@ async function loadSites() {
 
     // Filter
     sites = allSites.filter(s => {
-        if (!malawiOnly) return true;
-        const c = (s.country || "").toLowerCase();
-        return c === "malawi" || inMalawiBBox(s.lat, s.lon);
+        if (selectedApi && s.source !== selectedApi) return false;
+
+        if (selectedCountry) {
+            const c = (s.country || "").toLowerCase();
+            const normalizedCountry = c || (inMalawiBBox(s.lat, s.lon) ? "malawi" : "unknown");
+            if (normalizedCountry !== selectedCountry.toLowerCase()) return false;
+        }
+
+        if (recentDays > 0) {
+            const last = Number(s.last_updated);
+            if (!Number.isFinite(last)) return false;
+            const ageDays = ((Date.now() / 1000) - last) / 86400;
+            if (ageDays > recentDays) return false;
+        }
+
+        return true;
     });
 
-    logStatus(`Done. Found ${sites.length} sites.`);
+    logStatus(`Done. Found ${sites.length} sites after filters.`);
     refreshDropdown();
     refreshMap();
     try {
@@ -1206,6 +1205,9 @@ function main() {
     }
     
     el("reload").onclick = loadSites;
+    ["countryFilter", "apiFilter", "recentFilter"].forEach(id => {
+        if (el(id)) el(id).onchange = loadSites;
+    });
     // Hide old series buttons as they are now global settings
     if (el("loadSeries")) el("loadSeries").style.display = 'none';
     if (el("siteSelect")) el("siteSelect").parentElement.style.display = 'none';

@@ -99,8 +99,31 @@
                 <input type="date" id="dateEnd" />
             </label>
             <label>Days <input id="days" type="number" min="1" max="365" value="7" /></label>
+            <label>Country
+                <select id="countryFilter">
+                    <option value="Malawi" selected>Malawi</option>
+                    <option value="">All</option>
+                    <option value="Kenya">Kenya</option>
+                    <option value="Madagascar">Madagascar</option>
+                    <option value="Unknown">Unknown</option>
+                </select>
+            </label>
+            <label>API
+                <select id="apiFilter">
+                    <option value="">All</option>
+                    <option value="DCP">DCP</option>
+                    <option value="SonSetLink">SonSetLink</option>
+                </select>
+            </label>
+            <label>Recent
+                <select id="recentFilter">
+                    <option value="30">30d</option>
+                    <option value="90" selected>90d</option>
+                    <option value="365">365d</option>
+                    <option value="0">Any</option>
+                </select>
+            </label>
             <button id="reload" class="btn-primary">&#x25B6; Load</button>
-            <label><input id="malawiOnly" type="checkbox" checked /> Malawi only</label>
             <button id="btnExportCSV" class="btn-csv" title="Download summary CSV">&#x2B07; CSV</button>
             <a href="pulse-report.html" class="btn-doc" title="View detailed pulse report">&#x1F4C8; Pulse Report</a>
             <a href="methodology.html" target="_blank" class="btn-doc" title="Open the methodology document">&#x1F4D8; Methodology</a>

@@ -185,6 +185,32 @@
             End Date:
             <input type="date" id="endDate">
         </label>
+        <label>
+            Country:
+            <select id="countryFilter" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:150px;">
+                <option value="">All countries</option>
+                <option value="Malawi" selected>Malawi</option>
+                <option value="Kenya">Kenya</option>
+                <option value="Madagascar">Madagascar</option>
+                <option value="Unknown">Unknown</option>
+            </select>
+        </label>
+        <label>
+            Activity:
+            <select id="activityFilter" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:150px;">
+                <option value="30">Last 30 days</option>
+                <option value="90" selected>Last 90 days</option>
+                <option value="365">Last year</option>
+                <option value="0">Any time</option>
+            </select>
+        </label>
+        <label>
+            Scan Mode:
+            <select id="scanMode" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:160px;">
+                <option value="fast" selected>Fast</option>
+                <option value="deep">Deep SonSetLink scan</option>
+            </select>
+        </label>
         <button id="btnGenerate">Run Analysis</button>
         <button id="btnRefresh" class="secondary">Force Refresh</button>
         <div style="flex-grow: 1;"></div>
@@ -193,6 +219,8 @@
         <a href="methodology.html" target="_blank" style="margin-left: 10px;">Methodology</a>
         <a href="index.html" style="margin-left: 10px;">Back to Dashboard</a>
     </div>
+
+    <p class="note">Tip: using Malawi, a recent activity window, and Fast scan mode will usually make the report load much faster.</p>
 
     <div class="summary-grid">
         <div class="summary-card"><small>Sites Analysed</small><strong id="summaryBoreholes">0</strong></div>
@@ -212,11 +240,20 @@
         <p class="note">Use the table or selector below to focus on a single monitored site trend.</p>
         <div class="controls" style="box-shadow:none;padding:0;background:transparent;">
             <label>
-                Source:
+                API:
                 <select id="sourceFilter" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:180px;">
                     <option value="">All sources</option>
                     <option value="DCP">DCP</option>
                     <option value="SonSetLink">SonSetLink</option>
+                </select>
+            </label>
+            <label>
+                Result Type:
+                <select id="resultFilter" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:180px;">
+                    <option value="">All rows</option>
+                    <option value="valid">Valid Q/S only</option>
+                    <option value="screening">SonSetLink screening only</option>
+                    <option value="flagged">Flagged only</option>
                 </select>
             </label>
             <label>
