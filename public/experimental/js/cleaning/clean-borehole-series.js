@@ -29,10 +29,45 @@
         return median(diffs) || (60 * 60 * 1000);
     }
 
-    function dedupeSeries(points, qc, parameter) {
-        const sorted = [...points]
-            .map((point) => Schema.createTelemetryPoint(point))
-            .filter((point) => Number.isFinite(point.timestamp_ms) && point.value !== null)
+    function sanitizeSeriesValues(parameter, points, qc, options = {}) {
+        const maxFlowM3h = Number.isFinite(Number(options.maxFlowM3h)) ? Number(options.maxFlowM3h) : 250;
+        const maxReasonableLevelM = Number.isFinite(Number(options.maxReasonableLevelM)) ? Number(options.maxReasonableLevelM) : 500;
+        const output = [];
+
+        for (const point of points) {
+            const normalized = Schema.createTelemetryPoint(point);
+            if (!Number.isFinite(normalized.timestamp_ms) || normalized.value === null) continue;
+
+            const next = { ...normalized, flags: [...(normalized.flags || [])] };
+            if (parameter === Schema.PARAMETERS.FLOW && next.value < 0) {
+                next.value = 0;
+                next.flags = Schema.uniqueFlags([...(next.flags || []), "negative_flow_clamped"]);
+                qc.has_noise = true;
+                qc.negative_flow_clamped_count += 1;
+            }
+            if (parameter === Schema.PARAMETERS.FLOW && next.value > maxFlowM3h) {
+                next.flags = Schema.uniqueFlags([...(next.flags || []), "extreme_flow_reading"]);
+                qc.extreme_value_count += 1;
+            }
+            if (parameter === Schema.PARAMETERS.WATER_LEVEL && Math.abs(next.value) > maxReasonableLevelM) {
+                qc.dropped_outlier_count += 1;
+                continue;
+            }
+            output.push(next);
+        }
+
+        if (qc.negative_flow_clamped_count > 0) {
+            QcFlags.addFlag(qc.flags, "negative_flow_clamped", `${qc.negative_flow_clamped_count} negative flow readings were clamped to zero.`, "warn");
+        }
+        if (qc.dropped_outlier_count > 0) {
+            QcFlags.addFlag(qc.flags, "outlier_values_removed", `${qc.dropped_outlier_count} implausible readings were removed during cleaning.`, "warn");
+        }
+
+        return output;
+    }
+
+    function dedupeSeries(points, qc, parameter, options = {}) {
+        const sorted = sanitizeSeriesValues(parameter, points, qc, options)
             .sort((a, b) => a.timestamp_ms - b.timestamp_ms);
 
         const deduped = [];
@@ -111,8 +146,8 @@
         return output;
     }
 
-    function cleanParameterSeries(parameter, points, qc) {
-        let cleaned = dedupeSeries(points, qc, parameter);
+    function cleanParameterSeries(parameter, points, qc, options = {}) {
+        let cleaned = dedupeSeries(points, qc, parameter, options);
         if (parameter === Schema.PARAMETERS.FLOW) {
             cleaned = smoothFlowNoise(cleaned, qc);
         }
@@ -131,6 +166,9 @@
             duplicate_count: 0,
             gap_count: 0,
             noise_adjusted_count: 0,
+            negative_flow_clamped_count: 0,
+            dropped_outlier_count: 0,
+            extreme_value_count: 0,
             flags: []
         };
 
@@ -146,7 +184,7 @@
 
         const cleanedSeries = {};
         Object.keys(rawSeries).forEach((parameter) => {
-            cleanedSeries[parameter] = cleanParameterSeries(parameter, rawSeries[parameter] || [], qc);
+            cleanedSeries[parameter] = cleanParameterSeries(parameter, rawSeries[parameter] || [], qc, options);
         });
 
         const cleanedBundle = Schema.createBundle({

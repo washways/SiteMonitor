@@ -20,7 +20,7 @@
 
     function buildQualityFlags(eventState, drawdown, options) {
         const flags = new Set(eventState.flags || []);
-        if (!eventState.start_level_point || !eventState.last_level_point) {
+        if (!eventState.start_level_point || !eventState.last_positive_level_point) {
             flags.add("insufficient_water_level");
         }
         if (!Number.isFinite(drawdown) || drawdown < (options.minDrawdownM || 0.05)) {

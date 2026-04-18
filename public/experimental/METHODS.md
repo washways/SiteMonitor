@@ -47,6 +47,37 @@ For the first build, the normalized parameter set is intentionally narrow:
 - flow
 - water level above pump
 
+### Source descriptor fields
+
+| Field | Meaning |
+|---|---|
+| source_id | unique source key for the normalized provider and borehole |
+| api_id | adapter or provider ID |
+| provider | DCP or SonSetLink |
+| site_id | provider site identifier |
+| borehole_id | borehole or serial identifier used by the analytics layer |
+| display_name | human-readable label |
+| country | country or location grouping value |
+| lat / lon | optional coordinate values |
+| granularity | expected resolution such as hourly or daily-screening |
+| confidence_class | analytical or screening confidence |
+| metadata | provider-specific metadata retained for traceability |
+
+### Normalized telemetry point fields
+
+| Field | Meaning |
+|---|---|
+| timestamp_utc | canonical UTC timestamp string |
+| timestamp_ms | numeric sortable timestamp |
+| window_start_ms | optional start of the sample window |
+| sample_span_hours | optional duration represented by the point |
+| value | numeric reading after normalization |
+| unit | normalized display unit |
+| quality | observed or derived |
+| flags | QC or provenance tags |
+| raw_ref | pointer to the adapter field of origin |
+| meta | additional derived context such as raw units or daily totals |
+
 ---
 
 ## 3. API-specific handling
@@ -75,10 +106,23 @@ The first pass handles:
 - duplicate timestamp collapse
 - gap detection based on typical interval
 - simple isolated-noise adjustment for extreme flow spikes or dips
+- negative flow clamping to zero
+- removal of implausible outlier level values
 - missing-parameter flags
 - approximate-source flags
 
 The cleaning layer does not destroy the raw inputs. It produces a cleaned bundle and a QC summary.
+
+### Why this matters for field telemetry
+
+Real field telemetry is often messy. Sensors can:
+
+- report duplicate timestamps
+- skip expected intervals
+- send brief negative or zero anomalies
+- produce isolated spikes that do not represent real pumping behavior
+
+The cleaning stage is therefore designed to be conservative: it flags issues, makes small defensible corrections, and keeps uncertainty visible for later interpretation.
 
 ---
 
@@ -97,6 +141,14 @@ This makes the detector more tolerant of:
 - irregular sampling
 - transient dropouts
 - brief zero-flow interruptions
+
+### Additional hardening logic
+
+The detector also carries event-level caution flags when it sees:
+
+- sparse event signals with very few positive samples
+- large gaps inside an event window
+- windows that appear to end before the event naturally closed
 
 ---
 
@@ -146,7 +198,19 @@ These flags are intended to preserve interpretability rather than hide uncertain
 
 ---
 
-## 8. Intended use of this first build
+## 8. Maintainer guidance
+
+If a future maintainer adds another provider, the safe rule is:
+
+1. build a new adapter first
+2. normalize into the common schema second
+3. only then allow the cleaning, detection, and metrics layers to process the new telemetry
+
+No future provider should bypass the normalized telemetry contract.
+
+---
+
+## 9. Intended use of this first build
 
 This first build is intended for:
 

@@ -1,13 +1,25 @@
 (function () {
     const Exp = window.SiteMonitorExperimental || {};
-    const dcpAdapter = new Exp.DcpAdapter.DcpTelemetryAdapter();
-    const sslAdapter = new Exp.SonSetLinkAdapter.SonSetLinkTelemetryAdapter();
+    let dcpAdapter = null;
+    let sslAdapter = null;
     let currentReport = null;
 
     const el = (id) => document.getElementById(id);
 
     function getSelectedAdapter() {
         return el("provider").value === "SonSetLink" ? sslAdapter : dcpAdapter;
+    }
+
+    function ensureModulesReady() {
+        if (!Exp.DcpAdapter?.DcpTelemetryAdapter || !Exp.SonSetLinkAdapter?.SonSetLinkTelemetryAdapter || !Exp.CleanBoreholeSeries || !Exp.DetectPumpingEventsExperimental || !Exp.ComputeEventMetrics) {
+            throw new Error("One or more experimental modules failed to load.");
+        }
+    }
+
+    function ensureModulesReady() {
+        if (!Exp.DcpAdapter?.DcpTelemetryAdapter || !Exp.SonSetLinkAdapter?.SonSetLinkTelemetryAdapter || !Exp.CleanBoreholeSeries || !Exp.DetectPumpingEventsExperimental || !Exp.ComputeEventMetrics) {
+            throw new Error("One or more experimental modules failed to load.");
+        }
     }
 
     function setStatus(message, isError = false) {
@@ -168,6 +180,17 @@
     }
 
     window.addEventListener("DOMContentLoaded", () => {
+        try {
+            ensureModulesReady();
+            dcpAdapter = new Exp.DcpAdapter.DcpTelemetryAdapter();
+            sslAdapter = new Exp.SonSetLinkAdapter.SonSetLinkTelemetryAdapter();
+        } catch (error) {
+            setStatus(`Initialization failed: ${error.message}`, true);
+            if (el("btnRun")) el("btnRun").disabled = true;
+            if (el("btnSample")) el("btnSample").disabled = true;
+            return;
+        }
+
         const today = new Date();
         const start = new Date();
         start.setDate(today.getDate() - 30);

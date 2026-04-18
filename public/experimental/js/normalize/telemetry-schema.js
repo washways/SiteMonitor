@@ -6,6 +6,7 @@
     global.SiteMonitorExperimental = global.SiteMonitorExperimental || {};
     global.SiteMonitorExperimental.TelemetrySchema = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
+    const SCHEMA_VERSION = "1.0.0";
     const PARAMETERS = Object.freeze({
         FLOW: "flow",
         WATER_LEVEL: "water_level_above_pump"
@@ -31,6 +32,7 @@
     }
 
     function createSourceDescriptor(input = {}) {
+        const metadata = input.metadata && typeof input.metadata === "object" ? { ...input.metadata } : {};
         return {
             source_id: String(input.source_id || `${input.provider || "unknown"}:${input.borehole_id || input.site_id || "unknown"}`),
             api_id: String(input.api_id || "unknown"),
@@ -41,7 +43,9 @@
             country: String(input.country || "Unknown"),
             lat: toFiniteNumber(input.lat),
             lon: toFiniteNumber(input.lon),
-            metadata: input.metadata && typeof input.metadata === "object" ? { ...input.metadata } : {}
+            granularity: String(input.granularity || metadata.granularity || "unknown"),
+            confidence_class: String(input.confidence_class || metadata.confidence_class || "screening"),
+            metadata
         };
     }
 
@@ -85,6 +89,7 @@
         const source = createSourceDescriptor(input.source || {});
         const series = input.series || groupPointsByParameter(input.points || []);
         return {
+            schema_version: SCHEMA_VERSION,
             source,
             raw_series: input.raw_series || {},
             series,
@@ -101,6 +106,8 @@
     }
 
     return {
+        SCHEMA_VERSION,
+        SCHEMA_VERSION,
         PARAMETERS,
         toFiniteNumber,
         toTimestampMs,

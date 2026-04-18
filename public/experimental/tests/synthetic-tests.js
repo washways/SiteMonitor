@@ -112,6 +112,35 @@
             assert(rows[0].specific_capacity_m3h_per_m === 5, `Expected specific capacity 5, got ${rows[0].specific_capacity_m3h_per_m}.`);
         });
 
+        runTest("negative flow is clamped and flagged during cleaning", () => {
+            const flow = [
+                Exp.TelemetrySchema.createTelemetryPoint({ borehole_id: "BH-5", source_id: "TEST:BH-5", provider: "DCP", parameter: "flow", timestamp_utc: iso(baseMs, 0), value: -2, sample_span_hours: 1, unit: "m3/h" }),
+                Exp.TelemetrySchema.createTelemetryPoint({ borehole_id: "BH-5", source_id: "TEST:BH-5", provider: "DCP", parameter: "flow", timestamp_utc: iso(baseMs, 1), value: 2, sample_span_hours: 1, unit: "m3/h" })
+            ];
+            const bundle = makeBundle({ boreholeId: "BH-5", flowPoints: flow, levelPoints: [] });
+            const cleaned = Exp.CleanBoreholeSeries.cleanBoreholeSeries(bundle, {});
+            assert(cleaned.qc_summary.negative_flow_clamped_count === 1, "Expected one negative flow reading to be clamped.");
+        });
+
+        runTest("long gaps split events and remain flagged", () => {
+            const flow = [
+                Exp.TelemetrySchema.createTelemetryPoint({ borehole_id: "BH-6", source_id: "TEST:BH-6", provider: "DCP", parameter: "flow", timestamp_utc: iso(baseMs, 0), value: 2, sample_span_hours: 1, unit: "m3/h" }),
+                Exp.TelemetrySchema.createTelemetryPoint({ borehole_id: "BH-6", source_id: "TEST:BH-6", provider: "DCP", parameter: "flow", timestamp_utc: iso(baseMs, 1), value: 2, sample_span_hours: 1, unit: "m3/h" }),
+                Exp.TelemetrySchema.createTelemetryPoint({ borehole_id: "BH-6", source_id: "TEST:BH-6", provider: "DCP", parameter: "flow", timestamp_utc: iso(baseMs, 8), value: 2, sample_span_hours: 1, unit: "m3/h" }),
+                Exp.TelemetrySchema.createTelemetryPoint({ borehole_id: "BH-6", source_id: "TEST:BH-6", provider: "DCP", parameter: "flow", timestamp_utc: iso(baseMs, 9), value: 0, sample_span_hours: 1, unit: "m3/h" })
+            ];
+            const levels = [
+                Exp.TelemetrySchema.createTelemetryPoint({ borehole_id: "BH-6", source_id: "TEST:BH-6", provider: "DCP", parameter: "water_level_above_pump", timestamp_utc: iso(baseMs, 0), value: 12, unit: "m" }),
+                Exp.TelemetrySchema.createTelemetryPoint({ borehole_id: "BH-6", source_id: "TEST:BH-6", provider: "DCP", parameter: "water_level_above_pump", timestamp_utc: iso(baseMs, 8), value: 11, unit: "m" })
+            ];
+            const bundle = makeBundle({ boreholeId: "BH-6", flowPoints: flow, levelPoints: levels });
+            const cleaned = Exp.CleanBoreholeSeries.cleanBoreholeSeries(bundle, {});
+            const detected = Exp.DetectPumpingEventsExperimental.detectPumpingEvents(cleaned, { flowThreshold: 0.1, graceHours: 1 });
+            const rows = Exp.ComputeEventMetrics.computeEventMetrics(detected, { minDrawdownM: 0.05 });
+            assert(cleaned.qc_summary.has_gaps, "Expected large timestamp gaps to be flagged.");
+            assert(rows.length >= 1, "Expected at least one event row after the gap split.");
+        });
+
         const passed = results.filter((result) => result.status === "PASS").length;
         window.SyntheticTestResults = { total: results.length, passed, failed: results.length - passed, results };
         const target = document.getElementById("testOutput");

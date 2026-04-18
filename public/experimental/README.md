@@ -27,6 +27,17 @@ This module is isolated in its own page and scripts:
 - the pulse report is untouched
 - the worker proxy is untouched
 - the review page is unlinked from the normal site navigation
+- no production page imports any script from this folder
+
+### Critical review result
+
+The current placement is safe because the experimental files live entirely under the experimental folder and are not referenced by the production entry points. The live-sensitive files that must remain protected are:
+
+- index.html
+- app.js
+- pulse-report.html
+- report.js
+- cloudflare-worker/worker.js
 
 ## Main review page
 
@@ -61,6 +72,30 @@ The adapter layer is the only place that knows vendor-specific endpoints and fie
 ### Normalized telemetry
 All providers are converted into a common internal format before analytics begins.
 
+#### Normalized schema quick reference
+
+Every normalized bundle carries:
+
+- schema version
+- source descriptor
+- raw series snapshot
+- grouped normalized series by parameter
+- quality summary
+- metadata
+
+Every normalized point carries:
+
+- source ID
+- borehole ID
+- provider
+- parameter
+- UTC timestamp and timestamp in milliseconds
+- optional sampling span
+- numeric value and unit
+- quality label
+- flags
+- raw reference and provenance metadata
+
 ### Cleaning
 Cleaning keeps raw and cleaned states separate and adds QC flags rather than silently hiding issues.
 
@@ -69,6 +104,29 @@ The event engine works per borehole on normalized and cleaned telemetry only.
 
 ### Outputs
 Completed event rows are kept separate from raw data, normalized telemetry, cleaned telemetry, and active event state.
+
+## Dependency surface
+
+This first build intentionally uses a very small dependency surface:
+
+- browser-native fetch
+- browser-native localStorage
+- the existing shared proxy path
+- no build step
+- no package manager dependencies
+- no production routing changes
+
+That keeps the review layer easy to audit and lowers the risk of accidental impact on the live site.
+
+## Maintainer rules
+
+If future maintainers extend this experimental layer:
+
+1. add new APIs only through a new adapter file
+2. normalize new provider payloads before any cleaning or analytics
+3. do not let vendor-specific fields leak into detection or metrics modules
+4. keep this page unlinked until the work is explicitly signed off
+5. do not edit production files unless a separate review decides to promote the experiment
 
 ## Tests
 A browser-run synthetic test page is included here:

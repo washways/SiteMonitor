@@ -7,6 +7,7 @@
     global.SiteMonitorExperimental.BaseAdapter = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function (global) {
     const DEFAULT_PROXY_BASE = "https://wash-proxy.washways1.workers.dev";
+    const REQUEST_TIMEOUT_MS = 30000;
 
     class BaseTelemetryAdapter {
         constructor({ id, label, provider }) {
@@ -32,15 +33,24 @@
         }
     }
 
-    function getStoredCredentials() {
+    function getStoredCredentials(overrides = {}) {
         try {
-            return {
+            const local = {
                 dcpToken: (global.localStorage?.getItem("dcp_token") || "").trim(),
                 sslUser: (global.localStorage?.getItem("ssl_user") || "").trim(),
                 sslPass: (global.localStorage?.getItem("ssl_pass") || "").trim()
             };
+            return {
+                dcpToken: String(overrides.dcpToken ?? local.dcpToken ?? "").trim(),
+                sslUser: String(overrides.sslUser ?? local.sslUser ?? "").trim(),
+                sslPass: String(overrides.sslPass ?? local.sslPass ?? "").trim()
+            };
         } catch {
-            return { dcpToken: "", sslUser: "", sslPass: "" };
+            return {
+                dcpToken: String(overrides.dcpToken || "").trim(),
+                sslUser: String(overrides.sslUser || "").trim(),
+                sslPass: String(overrides.sslPass || "").trim()
+            };
         }
     }
 
@@ -67,13 +77,36 @@
         };
     }
 
-    async function fetchJson(url, options = {}) {
-        const res = await fetch(url, options);
-        const text = await res.text();
-        if (!res.ok) {
-            throw new Error(`HTTP ${res.status}: ${text.slice(0, 150)}`);
+    function validateWindow(window = {}) {
+        const start = new Date(window.start);
+        const end = new Date(window.end);
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+            throw new Error("A valid analysis start and end time are required.");
         }
-        return text.trim() ? JSON.parse(text) : {};
+        if (end <= start) {
+            throw new Error("The analysis end time must be later than the start time.");
+        }
+        return { start, end };
+    }
+
+    async function fetchJson(url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
+        const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+        const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+        try {
+            const res = await fetch(url, controller ? { ...options, signal: controller.signal } : options);
+            const text = await res.text();
+            if (!res.ok) {
+                throw new Error(`HTTP ${res.status}: ${text.slice(0, 150)}`);
+            }
+            return text.trim() ? JSON.parse(text) : {};
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                throw new Error(`Request timed out after ${timeoutMs} ms`);
+            }
+            throw error;
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     }
 
     function formatDcpIso(dateValue) {
@@ -91,7 +124,9 @@
         getStoredCredentials,
         getRuntimeContext,
         fetchJson,
+        validateWindow,
         formatDcpIso,
-        formatSslDateTime
+        formatSslDateTime,
+        REQUEST_TIMEOUT_MS
     };
 });

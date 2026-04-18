@@ -67,10 +67,22 @@
     }
 
     function closeEvent(activeState, closeMs, reason) {
+        const flags = new Set(activeState.flags || []);
+        if ((activeState.points || []).some((point) => (point.flags || []).includes("timestamp_gap_after_previous"))) {
+            flags.add("event_contains_gap");
+        }
+        const positiveCount = (activeState.points || []).filter((point) => Number(point.value) > 0).length;
+        if (positiveCount < 2) {
+            flags.add("sparse_event_signal");
+        }
+        if (reason === "end_of_window") {
+            flags.add("window_ended_while_event_active");
+        }
         return {
             ...activeState,
             end_ms: closeMs,
-            close_reason: reason
+            close_reason: reason,
+            flags: [...flags]
         };
     }
 

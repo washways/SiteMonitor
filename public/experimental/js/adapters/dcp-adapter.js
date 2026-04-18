@@ -19,9 +19,13 @@
             super({ id: "API-001", label: "DCP Water API v2", provider: "DCP" });
         }
 
+        canHandle(config = {}) {
+            return !config.provider || String(config.provider).toLowerCase() === "dcp";
+        }
+
         async listSources(context = {}) {
             const runtime = Base.getRuntimeContext(context);
-            const { dcpToken } = Base.getStoredCredentials();
+            const { dcpToken } = Base.getStoredCredentials(context.credentials || {});
             const headers = dcpToken
                 ? { "X-Api-Key": dcpToken, Accept: "application/json" }
                 : { Accept: "application/json" };
@@ -39,16 +43,20 @@
                 country: "Unknown",
                 lat: Number(row.location?.lat),
                 lon: Number(row.location?.lon),
+                granularity: "hourly",
+                confidence_class: "analytical",
                 metadata: {
                     last_seen: row.last_seen || null,
-                    commissioned_date: row.commissioned_date || null
+                    commissioned_date: row.commissioned_date || null,
+                    parameter_support: ["flow", "water_level_above_pump"]
                 }
             }));
         }
 
         async fetchTelemetry(sourceRef, window, context = {}) {
             const runtime = Base.getRuntimeContext(context);
-            const { dcpToken } = Base.getStoredCredentials();
+            const { start, end } = Base.validateWindow(window);
+            const { dcpToken } = Base.getStoredCredentials(context.credentials || {});
             const headers = dcpToken
                 ? { "X-Api-Key": dcpToken, Accept: "application/json" }
                 : { Accept: "application/json" };
@@ -61,8 +69,8 @@
             const fetchParameter = async (parameter) => {
                 const url = new URL(`${runtime.DCP_BASE}/v2/wells/${boreholeId}/timeseries`);
                 url.searchParams.set("parameter", parameter);
-                url.searchParams.set("from", Base.formatDcpIso(window.start));
-                url.searchParams.set("to", Base.formatDcpIso(window.end));
+                url.searchParams.set("from", Base.formatDcpIso(start));
+                url.searchParams.set("to", Base.formatDcpIso(end));
                 return Base.fetchJson(url.toString(), { headers });
             };
 
@@ -94,6 +102,8 @@
                 country: sourceRef.country || "Unknown",
                 lat: sourceRef.lat,
                 lon: sourceRef.lon,
+                granularity: sourceRef.granularity || "hourly",
+                confidence_class: sourceRef.confidence_class || "analytical",
                 metadata: sourceRef.metadata || {}
             });
 

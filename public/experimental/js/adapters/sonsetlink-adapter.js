@@ -45,9 +45,13 @@
             super({ id: "API-002", label: "SonSetLink Technical API", provider: "SonSetLink" });
         }
 
+        canHandle(config = {}) {
+            return !config.provider || String(config.provider).toLowerCase() === "sonsetlink";
+        }
+
         async listSources(context = {}) {
             const runtime = Base.getRuntimeContext(context);
-            const { sslUser, sslPass } = Base.getStoredCredentials();
+            const { sslUser, sslPass } = Base.getStoredCredentials(context.credentials || {});
             const url = new URL(`${runtime.SSL_BASE}/sites.json.php`);
             if (sslUser) url.searchParams.set("login", sslUser);
             if (sslPass) url.searchParams.set("password", sslPass);
@@ -65,17 +69,21 @@
                 country: String(row.location || "Unknown"),
                 lat: Number(row.latitude),
                 lon: Number(row.longitude),
+                granularity: "daily-screening",
+                confidence_class: "screening",
                 metadata: {
                     serial: String(row.serial || ""),
                     most_recent_tx: row.most_recent_tx || null,
-                    flow_unit: row.flow_unit || null
+                    flow_unit: row.flow_unit || null,
+                    parameter_support: ["flow", "water_level_above_pump (approximate)"]
                 }
             }));
         }
 
         async fetchTelemetry(sourceRef, window, context = {}) {
             const runtime = Base.getRuntimeContext(context);
-            const { sslUser, sslPass } = Base.getStoredCredentials();
+            const { start, end } = Base.validateWindow(window);
+            const { sslUser, sslPass } = Base.getStoredCredentials(context.credentials || {});
             const siteId = String(sourceRef?.site_id || sourceRef?.site || "");
             const serial = String(sourceRef?.metadata?.serial || sourceRef?.serial || sourceRef?.borehole_id || "");
             if (!siteId || !serial) {
@@ -103,8 +111,8 @@
                 if (sslPass) url.searchParams.set("password", sslPass);
                 url.searchParams.set("site", siteId);
                 url.searchParams.set("serial", serial);
-                url.searchParams.set("start_date", Base.formatSslDateTime(window.start));
-                url.searchParams.set("end_date", Base.formatSslDateTime(window.end));
+                url.searchParams.set("start_date", Base.formatSslDateTime(start));
+                url.searchParams.set("end_date", Base.formatSslDateTime(end));
                 url.searchParams.set("feature[]", "backfill");
                 url.searchParams.set("feature[]", "decumulation");
 
@@ -156,6 +164,8 @@
                 country: sourceRef.country || "Unknown",
                 lat: sourceRef.lat,
                 lon: sourceRef.lon,
+                granularity: sourceRef.granularity || "daily-screening",
+                confidence_class: sourceRef.confidence_class || "screening",
                 metadata: {
                     ...(sourceRef.metadata || {}),
                     endpoint_used: adapterResult?.endpoint_used || null
