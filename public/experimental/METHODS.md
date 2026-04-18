@@ -1,6 +1,6 @@
 # Experimental Telemetry Methods
 
-This document explains the methods used in the first isolated experimental telemetry analytics layer.
+This document explains the methods used in the isolated experimental telemetry and analytics layer.
 
 ## 1. Separation of states
 
@@ -198,7 +198,57 @@ These flags are intended to preserve interpretability rather than hide uncertain
 
 ---
 
-## 8. Maintainer guidance
+## 8. Daily, rolling, borehole, and network analytics
+
+The next isolated layer builds from the completed event outputs rather than bypassing them.
+
+### Daily rows
+Daily rows summarize:
+
+- total pumped volume
+- total hours pumped
+- event count
+- median and maximum drawdown
+- median and worst valid specific capacity
+- estimated resting water level
+- downtime and recovery caution notes
+
+### Rolling rows
+Rolling rows summarize 7-day and 30-day windows for:
+
+- abstraction volume
+- valid specific capacity medians
+- drawdown medians
+- resting-level trend direction
+- stress-event counts
+- downtime day counts
+
+### Borehole summaries
+Each borehole summary provides an interpretable review label rather than a black-box score. The current fields include:
+
+- readiness tier
+- typology group
+- total observed abstraction
+- active-day share
+- valid specific-capacity median
+- maximum observed drawdown
+- downtime and intermittency proxies
+- transparent stress reasons
+
+### Network comparison tables
+The network layer ranks sites by simple observable measures such as:
+
+- observed abstraction volume
+- drawdown severity
+- valid specific capacity
+- downtime proxy
+- data reliability limits
+
+DCP remains the main analytical lane. SonSetLink rows remain screening-oriented and are labelled accordingly.
+
+---
+
+## 9. Maintainer guidance
 
 If a future maintainer adds another provider, the safe rule is:
 
@@ -210,9 +260,9 @@ No future provider should bypass the normalized telemetry contract.
 
 ---
 
-## 9. Intended use of this first build
+## 10. Intended use of this build
 
-This first build is intended for:
+This build is intended for:
 
 - isolated review
 - method validation

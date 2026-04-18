@@ -49,7 +49,7 @@
         try {
             setStatus("Fetching the first available source for the selected provider...");
             const adapter = getSelectedAdapter();
-            const sources = await adapter.listSources({});
+            const sources = await adapter.listSources({ useProxy: true });
             if (!sources.length) {
                 setStatus("No sources were returned by the selected provider.", true);
                 return;
@@ -143,7 +143,7 @@
                 throw new Error("Select a valid date window.");
             }
 
-            const raw = await adapter.fetchTelemetry(sourceRef, { start, end }, { deepScan: false });
+            const raw = await adapter.fetchTelemetry(sourceRef, { start, end }, { deepScan: false, useProxy: true });
             const normalized = adapter.normalize(raw);
             const cleaned = Exp.CleanBoreholeSeries.cleanBoreholeSeries(normalized, {});
             const detected = Exp.DetectPumpingEventsExperimental.detectPumpingEvents(cleaned, {

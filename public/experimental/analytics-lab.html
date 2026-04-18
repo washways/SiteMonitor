@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Experimental Analytics Lab</title>
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="styles/telemetry-lab.css" />
+</head>
+<body>
+    <header>
+        <h1>Experimental Borehole Analytics Lab</h1>
+        <p>This page is isolated from the production dashboard and uses the real telemetry pipeline for review only.</p>
+    </header>
+    <main>
+        <section class="panel">
+            <p class="note">This experimental layer builds daily, rolling, borehole, and cross-site analytics from the existing normalized telemetry and event outputs. DCP metrics are the main analytical lane. SonSetLink remains screening-oriented and is labelled accordingly.</p>
+            <div class="controls">
+                <label>
+                    Provider
+                    <select id="provider">
+                        <option value="DCP">DCP</option>
+                        <option value="SonSetLink">SonSetLink</option>
+                    </select>
+                </label>
+                <label>
+                    Start date
+                    <input type="date" id="startDate" />
+                </label>
+                <label>
+                    End date
+                    <input type="date" id="endDate" />
+                </label>
+                <label>
+                    Max sources
+                    <input type="number" id="maxSources" value="8" min="1" max="54" step="1" />
+                </label>
+                <label>
+                    Flow threshold
+                    <input type="number" id="flowThreshold" value="0.1" step="0.01" />
+                </label>
+                <label>
+                    Grace hours
+                    <input type="number" id="graceHours" value="2" step="0.5" />
+                </label>
+            </div>
+            <div class="actions">
+                <button id="btnRunAnalytics">Run cohort analytics</button>
+                <button id="btnJsonAnalytics" class="secondary" disabled>Download JSON</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <strong>Status</strong>
+            <p id="status">Ready.</p>
+            <div id="analyticsSummary"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Plain-English interpretation</h2>
+            <div id="plainEnglish">Run the analytics to see a practical summary.</div>
+        </section>
+
+        <section class="panel">
+            <h2>Category guide</h2>
+            <div id="categoryGuide">Run the analytics to see the rule-based meanings and suggested actions.</div>
+        </section>
+
+        <section class="panel">
+            <h2>Borehole health summary</h2>
+            <div id="healthSummaryTable"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Maintenance / investigation priority</h2>
+            <div id="priorityRankingTable"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Daily summary table</h2>
+            <div id="dailySummaryTable"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Rolling summary table</h2>
+            <div id="rollingSummaryTable"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Borehole summary table</h2>
+            <div id="boreholeSummaryTable"></div>
+        </section>
+
+        <section class="panel">
+            <h2>Network comparison table</h2>
+            <div id="networkComparisonTable"></div>
+        </section>
+    </main>
+
+    <script src="js/normalize/telemetry-schema.js?v=20260418k"></script>
+    <script src="js/normalize/normalize-bundle.js?v=20260418k"></script>
+    <script src="js/adapters/base-adapter.js?v=20260418k"></script>
+    <script src="js/adapters/dcp-adapter.js?v=20260418k"></script>
+    <script src="js/adapters/sonsetlink-adapter.js?v=20260418k"></script>
+    <script src="js/cleaning/qc-flags.js?v=20260418k"></script>
+    <script src="js/cleaning/clean-borehole-series.js?v=20260418k"></script>
+    <script src="js/detection/detect-pumping-events.js?v=20260418k"></script>
+    <script src="js/metrics/compute-event-metrics.js?v=20260418k"></script>
+    <script src="js/analytics/compute-daily-analytics.js?v=20260418k"></script>
+    <script src="js/analytics/compute-rolling-analytics.js?v=20260418k"></script>
+    <script src="js/analytics/compute-borehole-analytics.js?v=20260418k"></script>
+    <script src="js/analytics/compute-network-analytics.js?v=20260418k"></script>
+    <script src="js/analytics/compute-interpretation-outputs.js?v=20260418k"></script>
+    <script src="js/outputs/render-analytics-tables.js?v=20260418k"></script>
+    <script src="js/outputs/export-json.js?v=20260418k"></script>
+    <script src="js/analytics-bootstrap.js?v=20260418k"></script>
+</body>
+</html>

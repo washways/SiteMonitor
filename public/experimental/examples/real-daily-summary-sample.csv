@@ -1,0 +1,7 @@
+date,display_name,provider,daily_volume_m3,hours_pumped,event_count,maximum_drawdown_m,median_specific_capacity_m3h_per_m,resting_level_estimate_m,flags
+2026-04-11,Tsachiti PS Well,DCP,17.366,12,1,0.410,0.541,40.800,"noisy_readings_adjusted; high_drawdown_event"
+2026-04-13,Tsachiti PS Well,DCP,19.536,11,1,0.355,0.501,40.800,"noisy_readings_adjusted; high_drawdown_event"
+2026-04-14,Tsachiti PS Well,DCP,20.264,10,1,0.235,7.319,40.774,"noisy_readings_adjusted; high_drawdown_event"
+2026-04-11,Madziabango PS Well 1,DCP,20.273,11,1,2.967,0.120,41.190,"high_drawdown_event; low_specific_capacity_event"
+2026-04-12,Madziabango PS Well 1,DCP,21.712,11,1,6.305,0.102,41.290,"high_drawdown_event; low_specific_capacity_event"
+2026-04-14,Madziabango PS Well 1,DCP,5.917,4,1,5.757,0.134,41.285,"high_drawdown_event; low_specific_capacity_event"

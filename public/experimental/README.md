@@ -1,6 +1,6 @@
 # Experimental Telemetry Lab
 
-This folder contains the **first isolated experimental telemetry analytics layer** for SiteMonitor.
+This folder contains the **isolated experimental telemetry and analytics layer** for SiteMonitor.
 
 It is intentionally separated from the production dashboard and pulse-report flow.
 
@@ -8,16 +8,20 @@ It is intentionally separated from the production dashboard and pulse-report flo
 
 This module exists to prove a safe pipeline for borehole telemetry analytics without changing the live user-facing site.
 
-The first build only does the following:
+The current experimental build does the following:
 
 1. fetch raw telemetry through isolated API adapters
 2. normalize both existing APIs into one internal format
 3. clean telemetry per borehole
 4. detect pumping events with a configurable grace period
 5. compute event-level metrics
-6. export event outputs as CSV or JSON
+6. compute daily summary rows
+7. compute rolling 7-day and 30-day summary rows
+8. compute borehole-level review summaries and typology labels
+9. compute cross-site network comparison tables
+10. export review outputs as CSV or JSON
 
-It does **not** add dashboards, alerts, daily summaries, or ML.
+It does **not** change the production dashboard, add live alerts, or add ML.
 
 ## Safety boundary
 
@@ -39,11 +43,13 @@ The current placement is safe because the experimental files live entirely under
 - report.js
 - cloudflare-worker/worker.js
 
-## Main review page
+## Main review pages
 
-Open the hidden review page directly:
+Open the hidden review pages directly:
 
-- experimental review page: [public/experimental/telemetry-lab.html](telemetry-lab.html)
+- event review page: [public/experimental/telemetry-lab.html](telemetry-lab.html)
+- analytics review page: [public/experimental/analytics-lab.html](analytics-lab.html)
+- plain-English summary: [public/experimental/PLAIN_ENGLISH_SUMMARY.md](PLAIN_ENGLISH_SUMMARY.md)
 
 ## Folder structure
 
@@ -57,12 +63,14 @@ Open the hidden review page directly:
   - pumping-event detection
 - [public/experimental/js/metrics](js/metrics)
   - event-level calculations
+- [public/experimental/js/analytics](js/analytics)
+  - daily, rolling, borehole, and network-level calculations
 - [public/experimental/js/outputs](js/outputs)
-  - isolated output rendering and export helpers
+  - isolated event and analytics rendering plus export helpers
 - [public/experimental/tests](tests)
   - synthetic edge-case tests
 - [public/experimental/examples](examples)
-  - example event outputs
+  - example event and analytics outputs
 
 ## Major components
 
@@ -103,7 +111,7 @@ Cleaning keeps raw and cleaned states separate and adds QC flags rather than sil
 The event engine works per borehole on normalized and cleaned telemetry only.
 
 ### Outputs
-Completed event rows are kept separate from raw data, normalized telemetry, cleaned telemetry, and active event state.
+Completed event rows, daily rows, rolling rows, borehole summaries, and network comparison tables are kept separate from raw data, normalized telemetry, cleaned telemetry, and active event state.
 
 ## Dependency surface
 
@@ -140,6 +148,9 @@ These tests cover:
 - grace-period bridging
 - missing water levels
 - event metric calculations
+- daily analytics calculations
+- rolling analytics windows
+- borehole and network ranking summaries
 
 ## Important note
 

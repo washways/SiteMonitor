@@ -1,0 +1,101 @@
+{
+  "note": "Example snapshot from the isolated analytics lab using real DCP telemetry. Values will change as live telemetry updates.",
+  "provider": "DCP",
+  "window_start": "2026-03-19",
+  "window_end": "2026-04-17",
+  "max_sources_requested": 4,
+  "network_summary": {
+    "sites_analysed": 4,
+    "active_sites": 2,
+    "telemetry_ready_sites": 2,
+    "stress_review_sites": 2,
+    "total_observed_volume_m3": 683.483,
+    "top_observed_abstraction_site": "Tsachiti PS Well"
+  },
+  "borehole_summary_table": [
+    {
+      "display_name": "Tsachiti PS Well",
+      "provider": "DCP",
+      "readiness_tier": "A",
+      "typology_group": "stressed_review",
+      "total_observed_volume_m3": 436.971,
+      "active_day_share": 0.967,
+      "downtime_days_proxy": 1,
+      "median_valid_specific_capacity_m3h_per_m": 0.828,
+      "max_drawdown_observed_m": 1.967,
+      "stress_flag": true
+    },
+    {
+      "display_name": "Madziabango PS Well 1",
+      "provider": "DCP",
+      "readiness_tier": "A",
+      "typology_group": "stressed_review",
+      "total_observed_volume_m3": 246.512,
+      "active_day_share": 0.533,
+      "downtime_days_proxy": 14,
+      "median_valid_specific_capacity_m3h_per_m": 0.126,
+      "max_drawdown_observed_m": 10.936,
+      "stress_flag": true
+    },
+    {
+      "display_name": "Dzoole HC Well",
+      "provider": "DCP",
+      "readiness_tier": "C",
+      "typology_group": "inactive_or_rest_only",
+      "total_observed_volume_m3": 0,
+      "active_day_share": 0,
+      "downtime_days_proxy": 30,
+      "median_valid_specific_capacity_m3h_per_m": null,
+      "max_drawdown_observed_m": 0,
+      "stress_flag": false
+    },
+    {
+      "display_name": "Mbalame PS Well",
+      "provider": "DCP",
+      "readiness_tier": "C",
+      "typology_group": "inactive_or_rest_only",
+      "total_observed_volume_m3": 0,
+      "active_day_share": 0,
+      "downtime_days_proxy": 30,
+      "median_valid_specific_capacity_m3h_per_m": null,
+      "max_drawdown_observed_m": 0,
+      "stress_flag": false
+    }
+  ],
+  "health_summary_table": [
+    {
+      "display_name": "Tsachiti PS Well",
+      "status_category": "declining_performance",
+      "maintenance_priority_label": "urgent investigation"
+    },
+    {
+      "display_name": "Madziabango PS Well 1",
+      "status_category": "declining_performance",
+      "maintenance_priority_label": "urgent investigation"
+    },
+    {
+      "display_name": "Dzoole HC Well",
+      "status_category": "insufficient_data",
+      "maintenance_priority_label": "routine monitoring"
+    },
+    {
+      "display_name": "Mbalame PS Well",
+      "status_category": "insufficient_data",
+      "maintenance_priority_label": "routine monitoring"
+    }
+  ],
+  "priority_ranking_table": [
+    {
+      "priority_rank": 1,
+      "display_name": "Tsachiti PS Well",
+      "status_category": "declining_performance",
+      "maintenance_priority_label": "urgent investigation"
+    },
+    {
+      "priority_rank": 2,
+      "display_name": "Madziabango PS Well 1",
+      "status_category": "declining_performance",
+      "maintenance_priority_label": "urgent investigation"
+    }
+  ]
+}
