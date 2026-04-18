@@ -17,9 +17,40 @@ header, main {
     margin: 0 auto;
 }
 
+header {
+    background: linear-gradient(135deg, #0f172a, #1e293b);
+    color: #f8fafc;
+    border-radius: 14px;
+    padding: 1rem 1.25rem;
+    margin-top: 1rem;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+}
+
+header h1,
+header p,
+header strong {
+    color: #f8fafc;
+}
+
+header a {
+    color: #bfdbfe;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+header a:hover,
+header a:focus {
+    color: #ffffff;
+    text-decoration: underline;
+}
+
 .viz-note {
     color: var(--viz-muted);
     margin-top: 0.25rem;
+}
+
+header .viz-note {
+    color: #dbeafe;
 }
 
 .viz-grid {
