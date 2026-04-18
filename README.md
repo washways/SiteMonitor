@@ -16,7 +16,7 @@ A **static, browser-based dashboard** for monitoring solar-powered and hand-pump
 | **Flow Report Table** | Configurable day range (default 7 days) — total flow (m³), sparkline trend, status |
 | **Interactive Map** | Leaflet map with colour-coded markers; click a marker to open site charts |
 | **Dual-axis Site Chart** | Aggregated Flow (m³/h) as blue bars on left axis + Water Level Above Pump (m) as amber line on right axis |
-| **Malawi filter** | One-click toggle to show only sites within the Malawi bounding box |
+| **Country and API filters** | Narrow the dashboard by country, data source, and recent activity to keep views focused and responsive |
 | **CSV Export** | Download summarised flow data for the selected period with one click |
 | **Event-based Q/S analysis** | Detects pumping episodes, calculates drawdown, maximum drawdown, pumped volume, and specific capacity per event |
 | **Grouped borehole analytics** | Summary table and trend charts for comparing boreholes over time |
@@ -32,18 +32,19 @@ A **static, browser-based dashboard** for monitoring solar-powered and hand-pump
 ```
 wash-dashboard/
 ├── public/                        ← deployed to GitHub Pages
-│   ├── login.html                 ← login gate (SHA-256 password check)
+│   ├── login.html                 ← legacy redirect page (no sign-in required)
 │   ├── index.html                 ← main dashboard
-│   ├── app.js                     ← all frontend logic
-│   ├── report.js                  ← pulse-report logic
-│   ├── pulse-report.html          ← pulse report page
-│   └── styles.css                 ← styling & responsive layout
+│   ├── app.js                     ← main frontend data-loading, map, and chart logic
+│   ├── report.js                  ← pulse-report analysis logic
+│   ├── event-analysis.js          ← reusable pumping-event and Q/S calculations
+│   ├── pulse-report.html          ← event analytics page
+│   ├── methodology.html           ← formatted methodology page
+│   └── styles.css                 ← shared styling & responsive layout
 ├── cloudflare-worker/
-│   └── worker.js                  ← CORS proxy (deployed to Cloudflare Workers)
+│   └── worker.js                  ← CORS proxy with optional secret injection
 ├── .github/workflows/
 │   └── deploy.yml                 ← GitHub Actions auto-deploy on push to main
-├── .gitignore                     ← excludes .env, server.js, test scripts
-├── server.js                      ← local dev server with built-in proxy (optional)
+├── .gitignore                     ← excludes local-only files and secrets
 ├── start_dashboard.bat            ← local dev launcher (Windows)
 └── README.md
 ```
@@ -59,8 +60,10 @@ Browser  →  Cloudflare Worker (wash-proxy.washways1.workers.dev)
 
 **Local development:**
 ```
-Browser  →  Direct API calls (using Chrome with CORS disabled via start_dashboard.bat)
+Browser  →  http://localhost:3000  →  Cloudflare Worker proxy  →  upstream API
 ```
+
+Local development now defaults to localhost plus the same proxy path used by the shared site. This keeps behaviour closer to production and avoids browser-side CORS workarounds.
 
 The Cloudflare Worker acts as a transparent CORS proxy — it forwards API requests server-side (where CORS doesn't apply), then returns responses with proper `Access-Control-Allow-Origin` headers.
 
@@ -97,29 +100,27 @@ The Cloudflare Worker acts as a transparent CORS proxy — it forwards API reque
 
 ## Getting Started
 
-### 1. First-time access — enter your API credentials
+### 1. Open the dashboard
 
-1. Open the dashboard and sign in (credentials are shared privately with authorised users)
+No sign-in is required for the live shared site. Open the dashboard directly and it will load using the shared Worker-backed credentials where available.
+
+### 2. Optional — enter your own API credentials
+
+1. Open the dashboard
 2. Click **⚙️ Settings** in the header
-3. Enter:
-   - **DCP API Key** — your key for `api.dcp.solar/water` (v2)
+3. Enter any custom override values you want to use:
+   - **DCP API Key** — your key for the DCP Water API
    - **SonSetLink User** — your SonSetLink username
    - **SonSetLink Password** — your SonSetLink password
 4. Click **Save & Reload**
 
-Credentials are saved only in your browser's `localStorage`. They are **never** sent to GitHub or any third-party service other than the two APIs above.
+Credentials are saved only in your browser's `localStorage`. They are **never** committed to GitHub. On the shared live site, Cloudflare Worker secrets are used mainly as a convenience layer for authorised sharing and demonstrations.
 
 ---
 
-### 2. Changing the login password
+### 3. About the login page
 
-To change the dashboard login password, open `public/login.html` and update the entry inside `initHashes()`:
-
-```js
-HASH_TABLE.push(await sha256("newusername:newpassword"));
-```
-
-Commit and push after changing. The password is checked client-side using the browser's native **WebCrypto SHA-256** — never stored in plain text.
+The existing `public/login.html` route is now a legacy redirect page. It simply forwards users into the main dashboard and is retained mainly for backward compatibility with older links.
 
 ---
 
@@ -127,7 +128,7 @@ Commit and push after changing. The password is checked client-side using the br
 
 ### Flow Report Table
 
-- Loads on startup once credentials are configured
+- Loads automatically on the shared live site, or after settings are configured for local use
 - Shows **Total Flow (m³)** over the selected period and a **sparkline trend chart**
 - **Status: OK** = at least one data point found; **No Data** = API returned only null/zero values for the period (offline sensor or inactive pump)
 - Click any row to open the detailed site chart below the map
@@ -149,11 +150,11 @@ Commit and push after changing. The password is checked client-side using the br
 
 | Control | Description |
 |---------|-------------|
-| **Days** input | Number of past days to fetch (default: 7) |
+| **Date and days controls** | Choose the reporting window for the dashboard |
+| **Country / API / Recent** | Filter the site list by country, data source, and recent activity |
 | **▶ Load** | Refresh all sites and the table |
-| **Malawi only** checkbox | Filter to Malawi geographic bounding box |
 | **⬇ CSV** | Download a CSV of name, flow total and status for all loaded sites |
-| **⚙️** | Open API settings modal |
+| **⚙️** | Open the optional API settings modal |
 
 ---
 
@@ -295,17 +296,18 @@ Use **localhost**, not `127.0.0.1`, for local testing. The proxy compares origin
 1. Push the repository updates to `main`
 2. GitHub Actions deploys the `public` folder to GitHub Pages
 3. The live site loads through the Worker proxy
-4. Authorised users sign in through the login gate and can access both the main dashboard and the event analytics page
+4. Users open the shared dashboard directly, while any new experimental pages remain hidden or unlinked until they have been reviewed and signed off
 
 ---
 
 ## Security Notes
 
 - API keys live only in `localStorage` or in Cloudflare Worker secrets for the shared deployment
+- Worker secrets are used as a sharing convenience for the live public-facing instance, not as a substitute for a full private backend
 - `.env` is listed in `.gitignore` and will never be pushed
-- The login password is stored as a **SHA-256 hash** in `login.html` and enforced with session-based page checks
 - The Cloudflare Worker only accepts requests from whitelisted origins (`washways.org`, `washways.github.io`, and local testing origins)
 - SonSetLink credentials are visible inside network requests if devtools are open — this is unavoidable for a fully browser-based static app
+- New experimental pages or prototypes should stay hidden from normal navigation until they have been explicitly signed off
 
 ---
 
@@ -313,8 +315,8 @@ Use **localhost**, not `127.0.0.1`, for local testing. The proxy compares origin
 
 - **CORS**: API calls on the live site are routed through a Cloudflare Worker CORS proxy. Direct browser-to-API calls will fail due to missing CORS headers on both API servers.
 - **Null flow values**: DCP wells that are offline or have inactive sensors return hourly buckets with `value: null` — shown as `No Data` in the table.
-- **SonSetLink 404s**: The fallback endpoint loop produces 404 responses for some devices. These are silenced in the code and are expected behaviour.
-- **Session auth only**: The login gate persists for the browser session only. Closing and reopening the browser tab requires re-login.
+- **SonSetLink variability**: SonSetLink endpoint availability is still device-specific. The code probes multiple possible tables and some will return no data or 404 responses by design.
+- **Static-site constraints**: This is a fully browser-based deployment, so secret handling and persistence are necessarily limited compared with a private backend service.
 
 ---
 
