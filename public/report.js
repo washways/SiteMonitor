@@ -32,6 +32,20 @@ function round(value, digits = 3) {
     return Number.isFinite(value) ? Number(value.toFixed(digits)) : null;
 }
 
+function getSelectedSource() {
+    return el("sourceFilter")?.value || "";
+}
+
+function getDisplayedEvents() {
+    const selectedSource = getSelectedSource();
+    const selectedSite = el("boreholeFilter")?.value || "";
+    return allEventRows.filter((event) => {
+        if (selectedSource && event.source !== selectedSource) return false;
+        if (selectedSite && event.well_id !== selectedSite) return false;
+        return true;
+    });
+}
+
 function log(msg) {
     if (!logEl) return;
     logEl.style.display = "block";
@@ -50,7 +64,7 @@ function getKeys() {
 }
 
 function cacheKey(startStr, endStr) {
-    return `siteMonitor_specific_capacity_v2_${startStr}_${endStr}`;
+    return `siteMonitor_specific_capacity_v3_${startStr}_${endStr}`;
 }
 
 function loadCachedEvents(startStr, endStr) {
@@ -153,7 +167,18 @@ async function sslSites() {
 
 async function sslSeries(siteId, serial, startUtc, endUtc) {
     const { sslUser, sslPass } = getKeys();
-    const endpoints = ["usage.json.php", "usage1_msg.json.php", "usage8_msg.json.php", "usage12_msg.json.php"];
+    const endpoints = [
+        "usage.json.php",
+        "status.json.php",
+        "diag.json.php",
+        "test.json.php",
+        "usage1_msg.json.php",
+        "usage8_msg.json.php",
+        "usage12_msg.json.php"
+    ];
+
+    const merged = [];
+    const seen = new Set();
 
     for (const ep of endpoints) {
         const url = new URL(`${SSL_BASE}/${ep}`);
@@ -168,12 +193,20 @@ async function sslSeries(siteId, serial, startUtc, endUtc) {
 
         try {
             const rows = await fetchJson(url.toString());
-            if (Array.isArray(rows) && rows.length) return { rows };
+            if (!Array.isArray(rows) || !rows.length) continue;
+            for (const row of rows) {
+                const key = `${row.adjusted_timestamp || row.timestamp || ""}|${row.flow1 || ""}|${row.deflow || ""}`;
+                if (seen.has(key)) continue;
+                seen.add(key);
+                merged.push({ ...row, _endpoint: ep });
+            }
         } catch {
-            // Some SonSetLink deployments use different usage endpoints.
+            // Some SonSetLink endpoints are unavailable in some deployments.
         }
     }
-    return { rows: [] };
+
+    merged.sort((a, b) => (parseSslTimestamp(a.adjusted_timestamp || a.timestamp) || 0) - (parseSslTimestamp(b.adjusted_timestamp || b.timestamp) || 0));
+    return { rows: merged };
 }
 
 function buildSslEvents(site, rows) {
@@ -273,16 +306,22 @@ async function dcpSeries(headers, wellId, parameter, startIso, endIso) {
 }
 
 function updateSummary(summary, boreholeCount, cached = false) {
+    const dcpCount = allEventRows.filter((event) => event.source === "DCP").length;
+    const sslCount = allEventRows.filter((event) => event.source === "SonSetLink").length;
     el("summaryBoreholes").textContent = boreholeCount || 0;
     el("summaryEvents").textContent = summary.total_events || 0;
+    if (el("summaryDcp")) el("summaryDcp").textContent = dcpCount;
+    if (el("summarySsl")) el("summarySsl").textContent = sslCount;
     el("summaryValid").textContent = summary.valid_events || 0;
     el("summaryAvgQs").textContent = Number.isFinite(summary.average_specific_capacity)
         ? summary.average_specific_capacity.toFixed(2)
         : "—";
     el("summaryFlagged").textContent = summary.flagged_events || 0;
-    el("cacheStatus").textContent = cached
+    const selectedSource = getSelectedSource();
+    const filterNote = selectedSource ? ` Filtered to ${selectedSource}.` : "";
+    el("cacheStatus").textContent = (cached
         ? "Showing cached analysis from local storage."
-        : "Showing fresh analysis.";
+        : "Showing fresh analysis.") + filterNote;
 }
 
 function formatDateTime(ts) {
@@ -290,9 +329,18 @@ function formatDateTime(ts) {
 }
 
 function formatFlags(flags) {
+    const labelMap = {
+        approximate_daily_event: "daily screening report",
+        insufficient_water_level: "insufficient water level",
+        invalid_specific_capacity: "invalid specific capacity",
+        flow_anomaly: "flow anomaly",
+        timestamp_gap: "timestamp gap",
+        ongoing_event: "ongoing event",
+        level_recovered_during_event: "level recovered during event"
+    };
     const active = Object.entries(flags || {})
         .filter(([, value]) => !!value)
-        .map(([key]) => key.replace(/_/g, " "));
+        .map(([key]) => labelMap[key] || key.replace(/_/g, " "));
     return active.length ? active.join(", ") : "OK";
 }
 
@@ -302,7 +350,7 @@ function renderRows(events) {
 
     if (!events.length) {
         const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="12" style="text-align:center;color:#666;">No pumping events detected for the selected period.</td>`;
+        tr.innerHTML = `<td colspan="12" style="text-align:center;color:#666;">No report rows detected for the selected period and source filter.</td>`;
         tbody.appendChild(tr);
         return;
     }
@@ -310,9 +358,12 @@ function renderRows(events) {
     const ordered = [...events].sort((a, b) => b.event_start_ms - a.event_start_ms);
     for (const event of ordered) {
         const tr = document.createElement("tr");
-        const hasIssues = Object.values(event.flags || {}).some(Boolean);
-        const status = event.flags.invalid_specific_capacity ? "Invalid" : (hasIssues ? "Review" : "Valid");
-        tr.className = status === "Invalid" ? "status-invalid" : (status === "Review" ? "status-review" : "status-valid");
+        const meaningfulIssues = Object.entries(event.flags || {}).some(([key, value]) => value && key !== "approximate_daily_event");
+        const isScreening = !!event.flags?.approximate_daily_event;
+        const status = isScreening ? "Screening" : (event.flags.invalid_specific_capacity ? "Invalid" : (meaningfulIssues ? "Review" : "Valid"));
+        tr.className = status === "Invalid"
+            ? "status-invalid"
+            : (status === "Review" ? "status-review" : (status === "Screening" ? "status-screening" : "status-valid"));
         tr.innerHTML = `
             <td>${event.well_name || event.well_id}<br><small>${event.source || ""}</small></td>
             <td>${formatDateTime(event.event_start_ms)}<br><small>to ${formatDateTime(event.event_end_ms)}</small></td>
@@ -336,6 +387,7 @@ function renderGroupedSummary(events) {
     tbody.innerHTML = "";
 
     const rows = buildBoreholeSummaries(events);
+    const sourceByWell = new Map(events.map((event) => [event.well_id, event.source]));
     if (!rows.length) {
         const tr = document.createElement("tr");
         tr.innerHTML = `<td colspan="8" style="text-align:center;color:#666;">No site summaries available yet.</td>`;
@@ -346,7 +398,7 @@ function renderGroupedSummary(events) {
     for (const row of rows) {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-            <td><button class="summary-link" data-well-id="${row.well_id}">${row.well_name}</button></td>
+            <td><button class="summary-link" data-well-id="${row.well_id}">${row.well_name}</button><br><small>${sourceByWell.get(row.well_id) || ""}</small></td>
             <td>${row.event_count}</td>
             <td>${row.valid_event_count}</td>
             <td>${row.total_volume_m3 ?? "—"}</td>
@@ -361,7 +413,7 @@ function renderGroupedSummary(events) {
     tbody.querySelectorAll(".summary-link").forEach((button) => {
         button.addEventListener("click", () => {
             el("boreholeFilter").value = button.dataset.wellId;
-            renderCharts(allEventRows);
+            refreshView();
         });
     });
 
@@ -383,8 +435,8 @@ function populateBoreholeFilter(events) {
 
     if (rows.some((row) => row.well_id === current)) {
         select.value = current;
-    } else if (rows.length) {
-        select.value = rows[0].well_id;
+    } else {
+        select.value = "";
     }
 }
 
@@ -559,12 +611,11 @@ async function generateReport(forceRefresh = false) {
         const cached = loadCachedEvents(startStr, endStr);
         if (cached) {
             allEventRows = cached.events || [];
-            renderRows(allEventRows);
-            renderGroupedSummary(allEventRows);
-            populateBoreholeFilter(allEventRows);
-            renderCharts(allEventRows);
-            updateSummary(cached.summary || buildEventSummary(allEventRows), new Set(allEventRows.map((e) => e.well_id)).size, true);
-            log(`Loaded ${allEventRows.length} cached pumping events.`);
+            populateBoreholeFilter(allEventRows.filter((event) => !getSelectedSource() || event.source === getSelectedSource()));
+            refreshView(new Set(allEventRows.map((e) => e.well_id)).size, true);
+            const dcpCount = allEventRows.filter((event) => event.source === "DCP").length;
+            const sslCount = allEventRows.filter((event) => event.source === "SonSetLink").length;
+            log(`Loaded ${allEventRows.length} cached report rows (${dcpCount} DCP, ${sslCount} SonSetLink).`);
             el("btnExport").disabled = allEventRows.length === 0;
             el("btnExportJson").disabled = allEventRows.length === 0;
             btn.disabled = false;
@@ -614,13 +665,12 @@ async function generateReport(forceRefresh = false) {
         }
 
         const summary = buildEventSummary(allEventRows);
-        renderRows(allEventRows);
-        renderGroupedSummary(allEventRows);
-        populateBoreholeFilter(allEventRows);
-        renderCharts(allEventRows);
-        updateSummary(summary, monitoredSites.length, false);
+        populateBoreholeFilter(allEventRows.filter((event) => !getSelectedSource() || event.source === getSelectedSource()));
+        refreshView(monitoredSites.length, false);
         saveCachedEvents(startStr, endStr, allEventRows, summary);
-        log(`Finished. Detected ${summary.total_events} pumping events across both data sources.`);
+        const dcpCount = allEventRows.filter((event) => event.source === "DCP").length;
+        const sslCount = allEventRows.filter((event) => event.source === "SonSetLink").length;
+        log(`Finished. Detected ${summary.total_events} report rows across both data sources (${dcpCount} DCP, ${sslCount} SonSetLink).`);
 
         el("btnExport").disabled = allEventRows.length === 0;
         el("btnExportJson").disabled = allEventRows.length === 0;
@@ -630,6 +680,14 @@ async function generateReport(forceRefresh = false) {
     } finally {
         btn.disabled = false;
     }
+}
+
+function refreshView(totalSiteCount = new Set(allEventRows.map((event) => event.well_id)).size, cached = false) {
+    const displayedEvents = getDisplayedEvents();
+    renderRows(displayedEvents);
+    renderGroupedSummary(displayedEvents);
+    renderCharts(displayedEvents);
+    updateSummary(buildEventSummary(allEventRows), totalSiteCount, cached);
 }
 
 window.addEventListener("DOMContentLoaded", () => {
@@ -645,7 +703,11 @@ window.addEventListener("DOMContentLoaded", () => {
     el("btnRefresh").addEventListener("click", () => generateReport(true));
     el("btnExport").addEventListener("click", exportCsv);
     el("btnExportJson").addEventListener("click", exportJson);
-    el("boreholeFilter").addEventListener("change", () => renderCharts(allEventRows));
+    el("sourceFilter").addEventListener("change", () => {
+        populateBoreholeFilter(allEventRows.filter((event) => !getSelectedSource() || event.source === getSelectedSource()));
+        refreshView();
+    });
+    el("boreholeFilter").addEventListener("change", () => refreshView());
     populateBoreholeFilter([]);
     renderGroupedSummary([]);
     renderCharts([]);

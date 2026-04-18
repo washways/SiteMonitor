@@ -123,6 +123,10 @@
             background: #fef2f2;
         }
 
+        .status-screening {
+            background: #eff6ff;
+        }
+
         .note {
             color: #334155;
             margin-bottom: 16px;
@@ -170,7 +174,7 @@
 
 <body>
     <h1>Borehole Pumping Events &amp; Specific Capacity</h1>
-    <p class="note">DCP sites use hourly flow and groundwater-level telemetry to detect continuous pumping events. SonSetLink sites are now included using daily flow totals and sensor-slot depth readings to provide screening-level drawdown and Q/S estimates where depth data are available.</p>
+    <p class="note">DCP sites use hourly flow and groundwater-level telemetry to detect continuous pumping events. SonSetLink sites are included here too using the best available daily flow totals, cumulative counters, and slot-based depth readings to produce screening-level operational reports where depth data are available.</p>
 
     <div class="controls">
         <label>
@@ -192,7 +196,9 @@
 
     <div class="summary-grid">
         <div class="summary-card"><small>Sites Analysed</small><strong id="summaryBoreholes">0</strong></div>
-        <div class="summary-card"><small>Pumping Events</small><strong id="summaryEvents">0</strong></div>
+        <div class="summary-card"><small>Reports / Events</small><strong id="summaryEvents">0</strong></div>
+        <div class="summary-card"><small>DCP Results</small><strong id="summaryDcp">0</strong></div>
+        <div class="summary-card"><small>SonSetLink Results</small><strong id="summarySsl">0</strong></div>
         <div class="summary-card"><small>Valid Q/S Results</small><strong id="summaryValid">0</strong></div>
         <div class="summary-card"><small>Average Q/S</small><strong id="summaryAvgQs">—</strong></div>
         <div class="summary-card"><small>Flagged Events</small><strong id="summaryFlagged">0</strong></div>
@@ -206,6 +212,14 @@
         <p class="note">Use the table or selector below to focus on a single monitored site trend.</p>
         <div class="controls" style="box-shadow:none;padding:0;background:transparent;">
             <label>
+                Source:
+                <select id="sourceFilter" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:180px;">
+                    <option value="">All sources</option>
+                    <option value="DCP">DCP</option>
+                    <option value="SonSetLink">SonSetLink</option>
+                </select>
+            </label>
+            <label>
                 Site:
                 <select id="boreholeFilter" style="padding:6px;border:1px solid #cbd5e1;border-radius:4px;min-width:240px;">
                     <option value="">All sites</option>
@@ -215,7 +229,7 @@
         <table id="boreholeSummaryTable">
             <thead>
                 <tr>
-                    <th>Borehole</th>
+                    <th>Site / Source</th>
                     <th>Events</th>
                     <th>Valid Q/S</th>
                     <th>Total Volume (m&#xB3;)</th>
@@ -241,7 +255,7 @@
         <table id="reportTable">
             <thead>
                 <tr>
-                    <th>Borehole</th>
+                    <th>Site / Source</th>
                     <th>Event Window</th>
                     <th>Hours</th>
                     <th>Volume (m&#xB3;)</th>
