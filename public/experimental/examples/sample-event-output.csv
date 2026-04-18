@@ -1,0 +1,2 @@
+borehole_id,event_start,event_end,duration_hours,total_pumped_volume_m3,groundwater_level_at_event_start_m,groundwater_level_at_last_valid_non_zero_flow_m,drawdown_m,last_valid_non_zero_flow_m3h,specific_capacity_m3h_per_m,deepest_level_reached_m,maximum_drawdown_m,quality_flags
+"BH-4","2026-01-01T00:00:00.000Z","2026-01-01T02:00:00.000Z","2","10","10","9","1","5","5","8","2",""
