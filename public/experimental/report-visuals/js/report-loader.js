@@ -8,6 +8,8 @@
     const Utils = global.SiteMonitorExperimentalVizUtils;
     const STORAGE_KEY = "sitemonitor.experimental.visualReport";
     const SETTINGS_KEY = "sitemonitor.experimental.visualSettings";
+    const RUN_STATE_KEY = "sitemonitor.experimental.visualReportRunState";
+    const DEFAULT_MAX_SOURCES = 54;
     let dcpAdapter = null;
     let sslAdapter = null;
 
@@ -70,6 +72,23 @@
         }
     }
 
+    function safeRunStateSet(state) {
+        try {
+            localStorage.setItem(RUN_STATE_KEY, JSON.stringify(state));
+        } catch (error) {
+            // ignore storage issues in the experimental layer
+        }
+    }
+
+    function safeRunStateGet() {
+        try {
+            const raw = localStorage.getItem(RUN_STATE_KEY);
+            return raw ? JSON.parse(raw) : null;
+        } catch (error) {
+            return null;
+        }
+    }
+
     function buildIndex(report) {
         const baseRows = report.health_summary_table.length
             ? report.health_summary_table
@@ -111,7 +130,7 @@
             provider: params.get("provider") || saved.provider || "DCP",
             startDate: params.get("startDate") || saved.startDate || Utils.toDateString(start),
             endDate: params.get("endDate") || saved.endDate || Utils.toDateString(today),
-            maxSources: Number(params.get("maxSources") || saved.maxSources || 8),
+            maxSources: Math.min(54, Math.max(Number(params.get("maxSources") || saved.maxSources || DEFAULT_MAX_SOURCES) || DEFAULT_MAX_SOURCES, DEFAULT_MAX_SOURCES)),
             flowThreshold: Number(params.get("flowThreshold") || saved.flowThreshold || 0.1),
             graceHours: Number(params.get("graceHours") || saved.graceHours || 2)
         };
@@ -120,12 +139,12 @@
     function populateAnalysisControls(root = document) {
         const byId = (id) => root.getElementById(id);
         const defaults = buildDefaultAnalysisSettings();
-        if (byId("analysisProvider") && !byId("analysisProvider").value) byId("analysisProvider").value = defaults.provider;
-        if (byId("analysisStartDate") && !byId("analysisStartDate").value) byId("analysisStartDate").value = defaults.startDate;
-        if (byId("analysisEndDate") && !byId("analysisEndDate").value) byId("analysisEndDate").value = defaults.endDate;
-        if (byId("analysisMaxSources") && !byId("analysisMaxSources").value) byId("analysisMaxSources").value = defaults.maxSources;
-        if (byId("analysisFlowThreshold") && !byId("analysisFlowThreshold").value) byId("analysisFlowThreshold").value = defaults.flowThreshold;
-        if (byId("analysisGraceHours") && !byId("analysisGraceHours").value) byId("analysisGraceHours").value = defaults.graceHours;
+        if (byId("analysisProvider")) byId("analysisProvider").value = defaults.provider;
+        if (byId("analysisStartDate")) byId("analysisStartDate").value = defaults.startDate;
+        if (byId("analysisEndDate")) byId("analysisEndDate").value = defaults.endDate;
+        if (byId("analysisMaxSources")) byId("analysisMaxSources").value = defaults.maxSources;
+        if (byId("analysisFlowThreshold")) byId("analysisFlowThreshold").value = defaults.flowThreshold;
+        if (byId("analysisGraceHours")) byId("analysisGraceHours").value = defaults.graceHours;
     }
 
     function getAnalysisSettings(root = document) {
@@ -199,75 +218,133 @@
         const Exp = ensureAnalyticsModulesReady();
         const { dcpAdapter: dcp, sslAdapter: ssl } = getAdapters(Exp);
         const adapter = settings.provider === "SonSetLink" ? ssl : dcp;
+        const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-        setStatus(statusTarget, "Loading real telemetry sources for the cohort analysis...");
-        safeSettingsSet(settings);
-
-        const allSources = await adapter.listSources({ useProxy: true });
-        const selected = [...allSources]
-            .sort((a, b) => {
-                const aTs = Date.parse(a.metadata?.most_recent_tx || a.metadata?.last_seen || 0) || 0;
-                const bTs = Date.parse(b.metadata?.most_recent_tx || b.metadata?.last_seen || 0) || 0;
-                return bTs - aTs;
-            })
-            .slice(0, settings.maxSources);
-
-        if (!selected.length) {
-            throw new Error("No sources were available for the selected provider.");
-        }
-
-        const dailyRows = [];
-        const rollingRows = [];
-        const boreholeRows = [];
-        const sourceReports = [];
-        const batchSize = settings.provider === "SonSetLink" ? 3 : 4;
-
-        for (let i = 0; i < selected.length; i += batchSize) {
-            const batch = selected.slice(i, i + batchSize);
-            const results = await Promise.all(batch.map(async (source) => {
-                try {
-                    return await analyzeSource(Exp, source, settings);
-                } catch (error) {
-                    return { error, source };
-                }
-            }));
-
-            results.forEach((result) => {
-                if (!result || result.error) return;
-                dailyRows.push(...(result.daily_rows || []));
-                rollingRows.push(...(result.rolling_rows || []));
-                boreholeRows.push(result.borehole_summary);
-                sourceReports.push(result.report);
+        try {
+            setStatus(statusTarget, "Loading real telemetry sources for the cohort analysis...");
+            safeSettingsSet(settings);
+            safeRunStateSet({
+                status: "running",
+                run_id: runId,
+                started_at: new Date().toISOString(),
+                provider: settings.provider,
+                requested_max_sources: settings.maxSources
             });
 
-            setStatus(statusTarget, `Processed ${Math.min(i + batchSize, selected.length)} of ${selected.length} sources using real telemetry.`);
+            const allSources = await adapter.listSources({ useProxy: true });
+            const selected = [...allSources]
+                .sort((a, b) => {
+                    const aTs = Date.parse(a.metadata?.most_recent_tx || a.metadata?.last_seen || 0) || 0;
+                    const bTs = Date.parse(b.metadata?.most_recent_tx || b.metadata?.last_seen || 0) || 0;
+                    return bTs - aTs;
+                })
+                .slice(0, settings.maxSources);
+
+            if (!selected.length) {
+                throw new Error("No sources were available for the selected provider.");
+            }
+
+            const dailyRows = [];
+            const rollingRows = [];
+            const boreholeRows = [];
+            const sourceReports = [];
+            const batchSize = settings.provider === "SonSetLink" ? 3 : 4;
+
+            for (let i = 0; i < selected.length; i += batchSize) {
+                const batch = selected.slice(i, i + batchSize);
+                const results = await Promise.all(batch.map(async (source) => {
+                    try {
+                        return await analyzeSource(Exp, source, settings);
+                    } catch (error) {
+                        return { error, source };
+                    }
+                }));
+
+                results.forEach((result) => {
+                    if (!result || result.error) return;
+                    dailyRows.push(...(result.daily_rows || []));
+                    rollingRows.push(...(result.rolling_rows || []));
+                    boreholeRows.push(result.borehole_summary);
+                    sourceReports.push(result.report);
+                });
+
+                setStatus(statusTarget, `Processed ${Math.min(i + batchSize, selected.length)} of ${selected.length} sources using real telemetry.`);
+            }
+
+            if (!boreholeRows.length) {
+                throw new Error("No telemetry could be processed for the selected cohort.");
+            }
+
+            const network = Exp.NetworkAnalytics.computeNetworkAnalytics(boreholeRows, {});
+            const interpretation = Exp.InterpretationOutputs.computeInterpretationOutputs(boreholeRows, network, {});
+            const report = {
+                exported_at: new Date().toISOString(),
+                provider: settings.provider,
+                cohort_request: {
+                    requested_max_sources: settings.maxSources,
+                    load_scope: settings.maxSources >= DEFAULT_MAX_SOURCES ? "full_available_cohort" : "limited_subset"
+                },
+                date_window: {
+                    start: settings.window.start.toISOString(),
+                    end: settings.window.end.toISOString()
+                },
+                analytics_note: "Experimental isolated analytics layer using real normalized telemetry and event outputs.",
+                daily_rows: dailyRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
+                rolling_rows: rollingRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
+                borehole_summary_table: boreholeRows.sort((a, b) => String(a.display_name).localeCompare(String(b.display_name))),
+                ...network,
+                ...interpretation,
+                source_reports: sourceReports
+            };
+
+            safeStorageSet(report);
+            safeRunStateSet({
+                status: "ready",
+                run_id: runId,
+                completed_at: new Date().toISOString(),
+                provider: settings.provider,
+                requested_max_sources: settings.maxSources,
+                loaded_site_count: boreholeRows.length
+            });
+            const scopeLabel = settings.maxSources >= DEFAULT_MAX_SOURCES ? "full available cohort" : `${settings.maxSources}-source cohort`;
+            setStatus(statusTarget, `Completed ${scopeLabel} analysis for ${boreholeRows.length} sources using the real telemetry pipeline.`);
+            return buildIndex(report);
+        } catch (error) {
+            safeRunStateSet({
+                status: "error",
+                run_id: runId,
+                message: error.message,
+                failed_at: new Date().toISOString(),
+                provider: settings.provider,
+                requested_max_sources: settings.maxSources
+            });
+            throw error;
+        }
+    }
+
+    async function waitForSharedReport(options = {}) {
+        const statusTarget = options.statusTarget || null;
+        const timeoutMs = options.timeoutMs || 120000;
+        const startMs = Date.now();
+        setStatus(statusTarget, "A full cohort load is already running in another page. Waiting to reuse it here...");
+
+        while ((Date.now() - startMs) < timeoutMs) {
+            const report = safeStorageGet();
+            if (report?.cohort_request?.load_scope === "full_available_cohort") {
+                const loadedCount = report.network_summary?.site_count || report.health_summary_table?.length || report.borehole_summary_table?.length || 0;
+                setStatus(statusTarget, `Loaded cached cohort for ${loadedCount} boreholes from browser storage. Switching pages will reuse this same report.`);
+                return buildIndex(report);
+            }
+
+            const runState = safeRunStateGet();
+            if (runState?.status === "error") {
+                throw new Error(runState.message || "The shared cohort load failed in another page.");
+            }
+
+            await new Promise((resolve) => setTimeout(resolve, 1000));
         }
 
-        if (!boreholeRows.length) {
-            throw new Error("No telemetry could be processed for the selected cohort.");
-        }
-
-        const network = Exp.NetworkAnalytics.computeNetworkAnalytics(boreholeRows, {});
-        const interpretation = Exp.InterpretationOutputs.computeInterpretationOutputs(boreholeRows, network, {});
-        const report = {
-            exported_at: new Date().toISOString(),
-            provider: settings.provider,
-            date_window: {
-                start: settings.window.start.toISOString(),
-                end: settings.window.end.toISOString()
-            },
-            analytics_note: "Experimental isolated analytics layer using real normalized telemetry and event outputs.",
-            daily_rows: dailyRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
-            rolling_rows: rollingRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
-            borehole_summary_table: boreholeRows.sort((a, b) => String(a.display_name).localeCompare(String(b.display_name))),
-            ...network,
-            ...interpretation,
-            source_reports: sourceReports
-        };
-
-        safeStorageSet(report);
-        setStatus(statusTarget, `Completed cohort analysis for ${boreholeRows.length} sources using the real telemetry pipeline.`);
-        return buildIndex(report);
+        throw new Error("The shared cohort load is taking longer than expected. Please wait a moment and try again.");
     }
 
     async function loadReport(options = {}) {
@@ -286,7 +363,17 @@
                 report = safeStorageGet();
             }
 
-            if (!report && options.runLiveIfMissing) {
+            const shouldSeedFullCohort = !!(
+                options.runLiveIfMissing
+                && !requestedUrl
+                && (!report || report.cohort_request?.load_scope !== "full_available_cohort")
+            );
+
+            if (shouldSeedFullCohort) {
+                const runState = safeRunStateGet();
+                if (runState?.status === "running") {
+                    return await waitForSharedReport({ statusTarget });
+                }
                 return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: options.settings });
             }
 
@@ -295,9 +382,18 @@
             }
 
             safeStorageSet(report);
-            setStatus(statusTarget, `Loaded report successfully from ${sourceLabel}.`);
+            const loadedCount = report.network_summary?.site_count || report.health_summary_table?.length || report.borehole_summary_table?.length || 0;
+            const sourceMessage = sourceLabel === "browser storage"
+                ? `Loaded cached cohort for ${loadedCount} boreholes from browser storage. Switching pages will reuse this same report.`
+                : `Loaded report successfully from ${sourceLabel}.`;
+            setStatus(statusTarget, sourceMessage);
             return buildIndex(report);
         } catch (error) {
+            safeRunStateSet({
+                status: "error",
+                message: error.message,
+                failed_at: new Date().toISOString()
+            });
             setStatus(statusTarget, error.message, true);
             throw error;
         }
@@ -369,6 +465,7 @@
     return {
         STORAGE_KEY,
         SETTINGS_KEY,
+        RUN_STATE_KEY,
         loadReport,
         runLiveAnalysis,
         readUploadedFile,
