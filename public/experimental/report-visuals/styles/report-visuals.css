@@ -122,11 +122,19 @@ header .viz-note {
 }
 
 .chart-box {
+    position: relative;
     background: var(--viz-panel);
     border: 1px solid var(--viz-border);
     border-radius: 12px;
     padding: 0.75rem;
     min-height: 360px;
+}
+
+.expand-chart-btn {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.6rem;
+    z-index: 2;
 }
 
 .detail-header {
@@ -194,6 +202,46 @@ header .viz-note {
     border-left: 4px solid var(--viz-accent);
     padding: 0.75rem 1rem;
     border-radius: 10px;
+}
+
+.plot-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.72);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    padding: 1rem;
+}
+
+.plot-modal-backdrop.open {
+    display: flex;
+}
+
+.plot-modal {
+    width: min(1200px, 96vw);
+    max-height: 92vh;
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 12px 36px rgba(15, 23, 42, 0.35);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.plot-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.plot-modal-body {
+    padding: 0.75rem;
+    min-height: 520px;
 }
 
 @media (max-width: 900px) {

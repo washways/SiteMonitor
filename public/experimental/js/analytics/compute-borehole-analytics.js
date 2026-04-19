@@ -65,6 +65,7 @@
 
     function determineFlowBehaviorProfile(summary = {}) {
         if ((summary.total_events || 0) <= 0) return "insufficient_event_support";
+        if ((summary.run_dry_candidate_event_share || 0) >= 0.3) return "possible_intake_limited";
         if ((summary.short_burst_event_share || 0) >= 0.6) return "mostly_short_burst";
         if ((summary.stable_tail_event_share || 0) >= 0.5 && (summary.daily_volume_cv || 1) <= 0.5) return "mostly_stable_sustained";
         if (summary.stress_flag) return "variable_or_stressed";
@@ -89,6 +90,8 @@
         const downtimeDays = orderedDaily.reduce((sum, row) => sum + (Number(row.downtime_indicator) || 0), 0);
         const stableTailEvents = orderedDaily.reduce((sum, row) => sum + (Number(row.stable_tail_event_count) || 0), 0);
         const shortBurstEvents = orderedDaily.reduce((sum, row) => sum + (Number(row.short_burst_event_count) || 0), 0);
+        const runDryCandidateEvents = orderedDaily.reduce((sum, row) => sum + (Number(row.run_dry_candidate_event_count) || 0), 0);
+        const possibleIntakeLimitationEvents = orderedDaily.reduce((sum, row) => sum + (Number(row.possible_intake_limitation_count) || 0), 0);
         const dataQualityFlagSet = new Set([
             "approximate_source",
             "insufficient_resting_level_support",
@@ -124,14 +127,22 @@
             total_events: totalEvents,
             total_stable_tail_events: stableTailEvents,
             total_short_burst_events: shortBurstEvents,
+            total_run_dry_candidate_events: runDryCandidateEvents,
+            total_possible_intake_limitation_events: possibleIntakeLimitationEvents,
             stable_tail_event_share: totalEvents ? round(stableTailEvents / totalEvents, 3) : 0,
             short_burst_event_share: totalEvents ? round(shortBurstEvents / totalEvents, 3) : 0,
+            run_dry_candidate_event_share: totalEvents ? round(runDryCandidateEvents / totalEvents, 3) : 0,
+            possible_intake_limitation_event_share: totalEvents ? round(possibleIntakeLimitationEvents / totalEvents, 3) : 0,
             valid_specific_capacity_event_count: validEventCount,
             qs_method_used: latestRolling.qs_method || orderedDaily[orderedDaily.length - 1]?.active_qs_method || "preferred",
             median_valid_specific_capacity_m3h_per_m: round(median(orderedDaily.map((row) => row.median_specific_capacity_m3h_per_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number))),
             median_event_drawdown_m: round(median(orderedDaily.map((row) => row.median_drawdown_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number))),
             max_drawdown_observed_m: round(Math.max(...orderedDaily.map((row) => row.maximum_drawdown_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number), 0)),
             median_recovery_time_h: round(median(orderedDaily.map((row) => row.median_recovery_time_h).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number)), 2),
+            median_resting_level_m: round(median(orderedDaily.map((row) => row.estimated_daily_resting_level_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number))),
+            latest_resting_level_m: round([...orderedDaily].reverse().find((row) => Number.isFinite(Number(row.estimated_daily_resting_level_m)))?.estimated_daily_resting_level_m),
+            median_dynamic_level_m: round(median(orderedDaily.map((row) => row.daily_min_groundwater_level_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number))),
+            latest_dynamic_level_m: round([...orderedDaily].reverse().find((row) => Number.isFinite(Number(row.daily_min_groundwater_level_m)))?.daily_min_groundwater_level_m),
             recovery_weakness_share: totalEvents ? round(orderedDaily.reduce((sum, row) => sum + (Number(row.recovery_weakness_count) || 0), 0) / totalEvents, 3) : 0,
             downtime_proxy_days: downtimeDays,
             downtime_proxy_share: reviewWindowDays ? round(downtimeDays / reviewWindowDays, 3) : 0,
@@ -188,6 +199,7 @@
             ...(summary.performance_decline_flag ? ["performance_decline_flag"] : []),
             ...(summary.stress_flag ? ["stress_flag"] : []),
             ...(summary.short_burst_event_share >= 0.6 ? ["short_burst_dominant_use"] : []),
+            ...(summary.run_dry_candidate_event_share >= 0.3 ? ["possible_run_dry_pattern"] : []),
             ...(summary.analysis_readiness_tier === "D" ? ["limited_analysis_readiness"] : [])
         ]);
 

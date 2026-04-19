@@ -55,6 +55,7 @@
         const activeSites = rows.filter((row) => (Utils.safeNumber(row.active_day_share) || 0) > 0).length;
         const telemetryReady = rows.filter((row) => ["A", "B"].includes(row.analysis_readiness_tier)).length;
         const stressed = rows.filter((row) => ["stressed", "declining_performance"].includes(row.status_category) || row.stress_flag).length;
+        const possibleRunDry = rows.filter((row) => (Number(row.run_dry_candidate_event_share) || 0) >= 0.3 || row.flow_behavior_profile === "possible_intake_limited").length;
         const totalVolume = rows.reduce((sum, row) => sum + (Utils.safeNumber(row.total_volume_m3) || 0), 0);
 
         el("kpiCards").innerHTML = `
@@ -63,6 +64,7 @@
                 <div class="kpi-card"><div class="label">Active sites</div><div class="value">${activeSites}</div></div>
                 <div class="kpi-card"><div class="label">Telemetry-ready</div><div class="value">${telemetryReady}</div></div>
                 <div class="kpi-card"><div class="label">Stressed sites</div><div class="value">${stressed}</div></div>
+                <div class="kpi-card"><div class="label">Possible intake-limited</div><div class="value">${possibleRunDry}</div></div>
                 <div class="kpi-card"><div class="label">Observed volume</div><div class="value">${Utils.formatNumber(totalVolume, 1)}</div></div>
             </div>`;
     }
@@ -128,7 +130,7 @@
             mode: "markers",
             x: xValues,
             y: rows.map((row) => Utils.safeNumber(row.downtime_proxy_share) || 0),
-            text: rows.map((row) => row.display_name || row.borehole_id),
+            text: rows.map((row) => `${row.display_name || row.borehole_id}<br>Flow profile: ${row.flow_behavior_profile || "—"}<br>Possible run-dry share: ${Utils.formatPercent(row.run_dry_candidate_event_share || 0, 0)}<br>Resting level: ${Utils.formatNumber(row.latest_resting_level_m, 2)}<br>Dynamic level: ${Utils.formatNumber(row.latest_dynamic_level_m, 2)}`),
             customdata: rows,
             marker: {
                 size: rows.map((row) => Math.max(12, Math.sqrt(Utils.safeNumber(row.total_volume_m3) || 0) * 2 + 12)),
@@ -155,12 +157,16 @@
         const grouped = Utils.groupBy(filtered.dailyRows, Utils.boreholeKey);
         const cards = filtered.healthRows.map((row) => {
             const daily = Utils.sortByDate(grouped.get(Utils.boreholeKey(row)) || []);
-            const spark = Utils.sparklineSvg(daily.map((item) => item.daily_pumped_volume_m3));
+            const restingSpark = Utils.sparklineSvg(daily.map((item) => item.estimated_daily_resting_level_m), { stroke: "#f59e0b" });
+            const dynamicSpark = Utils.sparklineSvg(daily.map((item) => item.daily_min_groundwater_level_m), { stroke: "#0f766e" });
             return `
                 <div class="kpi-card">
                     <div><strong><a href="${boreholeUrl(row)}">${Utils.escapeHtml(row.display_name || row.borehole_id)}</a></strong></div>
                     <div class="viz-note">${Utils.escapeHtml(row.status_label || row.status_category || "")}</div>
-                    <div>${spark}</div>
+                    <div class="viz-note">Resting level</div>
+                    <div>${restingSpark}</div>
+                    <div class="viz-note">Dynamic level proxy</div>
+                    <div>${dynamicSpark}</div>
                 </div>`;
         }).join("");
         el("boreholeSparklines").innerHTML = `<div class="viz-grid">${cards}</div>`;
@@ -195,6 +201,8 @@
                         <th><button data-sort="total_volume_m3">Volume</button></th>
                         <th><button data-sort="median_valid_specific_capacity_m3h_per_m">Median Q/S</button></th>
                         <th><button data-sort="downtime_proxy_share">Downtime</button></th>
+                        <th><button data-sort="latest_resting_level_m">Resting</button></th>
+                        <th><button data-sort="latest_dynamic_level_m">Dynamic</button></th>
                         <th>Daily sparkline</th>
                         <th>Interpretation</th>
                     </tr>
@@ -211,6 +219,8 @@
                             <td>${Utils.formatNumber(row.total_volume_m3, 1)}</td>
                             <td>${Utils.safeNumber(row.median_valid_specific_capacity_m3h_per_m) === null ? "No valid Q/S" : Utils.formatNumber(row.median_valid_specific_capacity_m3h_per_m, 3)}</td>
                             <td>${Utils.formatPercent(row.downtime_proxy_share, 0)}</td>
+                            <td>${Utils.formatNumber(row.latest_resting_level_m, 2)}</td>
+                            <td>${Utils.formatNumber(row.latest_dynamic_level_m, 2)}</td>
                             <td>${Utils.sparklineSvg(daily.map((item) => item.daily_pumped_volume_m3))}</td>
                             <td>${Utils.escapeHtml(row.concise_interpretation || "—")}</td>
                         </tr>`;
@@ -245,6 +255,7 @@
         renderBubbleScatter(filtered);
         renderSparklines(filtered);
         renderTable(filtered);
+        Utils.attachExpandButtons();
         setStatus(`Rendered overview for ${filtered.healthRows.length} boreholes from the current report.`);
     }
 

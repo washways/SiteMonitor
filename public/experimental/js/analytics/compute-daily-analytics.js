@@ -136,6 +136,8 @@
             if (Number.isFinite(recovery.recovery_time_h) && recovery.recovery_time_h >= weakRecoveryHoursThreshold) stressReasons.push("slow_recovery_event");
             if ((recovery.flags || []).includes("recovery_not_observed_within_window")) stressReasons.push("recovery_not_observed");
             if ((row.flow_behavior_profile || "") === "short_burst") stressReasons.push("short_burst_profile");
+            if (row.possible_intake_limitation_flag) stressReasons.push("possible_intake_limitation");
+            if (row.possible_run_dry_flag) stressReasons.push("possible_run_dry_event");
             if (flags.some((flag) => ["invalid_specific_capacity", "insufficient_water_level", "event_contains_gap", "sparse_event_signal"].includes(flag))) {
                 stressReasons.push("quality_limited_event");
             }
@@ -147,6 +149,8 @@
                 selected_specific_capacity_method: selectedQs.method,
                 selected_specific_capacity_m3h_per_m: round(selectedQs.value),
                 event_profile: row.flow_behavior_profile || "unclassified",
+                run_dry_candidate: !!row.possible_run_dry_flag,
+                possible_intake_limitation: !!row.possible_intake_limitation_flag,
                 recovery_time_h: recovery.recovery_time_h,
                 stress_event: stressReasons.length > 0,
                 stress_reasons: uniqueFlags(stressReasons),
@@ -201,6 +205,8 @@
                 median_event_flow_m3h: null,
                 stable_tail_event_count: 0,
                 short_burst_event_count: 0,
+                run_dry_candidate_event_count: 0,
+                possible_intake_limitation_count: 0,
                 active_qs_method: null,
                 flow_observation_count: 0,
                 level_observation_count: 0,
@@ -306,6 +312,8 @@
                 row.recovery_weakness_count = row._eventDetails.filter((detail) => (detail.stress_reasons || []).includes("slow_recovery_event") || (detail.stress_reasons || []).includes("recovery_not_observed")).length;
                 row.stable_tail_event_count = row._eventDetails.filter((detail) => detail.has_stable_tail_support).length;
                 row.short_burst_event_count = row._eventDetails.filter((detail) => detail.event_profile === "short_burst").length;
+                row.run_dry_candidate_event_count = row._eventDetails.filter((detail) => detail.run_dry_candidate).length;
+                row.possible_intake_limitation_count = row._eventDetails.filter((detail) => detail.possible_intake_limitation).length;
                 row.active_qs_method = row._eventDetails.find((detail) => detail.selected_specific_capacity_method)?.selected_specific_capacity_method || qsMethod;
                 row.estimated_daily_resting_level_m = restEstimate.estimated_daily_resting_level_m;
                 row.downtime_indicator = row.flow_observation_count > 0 && row.daily_pumped_volume_m3 <= 0 ? 1 : 0;

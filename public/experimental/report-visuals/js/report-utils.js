@@ -113,6 +113,83 @@
         return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
     }
 
+    function downloadCsv(filename = "export.csv", rows = []) {
+        if (!rows.length) return;
+        const columns = unique(rows.flatMap((row) => Object.keys(row || {})));
+        const escapeCsv = (value) => {
+            const text = String(value ?? "");
+            return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+        };
+        const csv = [
+            columns.join(","),
+            ...rows.map((row) => columns.map((column) => escapeCsv(row?.[column])).join(","))
+        ].join("\n");
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    function ensurePlotlyModal() {
+        let backdrop = document.getElementById("plotlyChartModalBackdrop");
+        if (backdrop) return backdrop;
+        backdrop = document.createElement("div");
+        backdrop.id = "plotlyChartModalBackdrop";
+        backdrop.className = "plot-modal-backdrop";
+        backdrop.innerHTML = `
+            <div class="plot-modal">
+                <div class="plot-modal-header">
+                    <strong id="plotlyChartModalTitle">Expanded chart</strong>
+                    <button type="button" id="plotlyChartModalClose" class="secondary">Close</button>
+                </div>
+                <div id="plotlyChartModalBody" class="plot-modal-body"></div>
+            </div>`;
+        backdrop.addEventListener("click", (event) => {
+            if (event.target === backdrop) backdrop.classList.remove("open");
+        });
+        backdrop.querySelector("#plotlyChartModalClose")?.addEventListener("click", () => backdrop.classList.remove("open"));
+        document.body.appendChild(backdrop);
+        return backdrop;
+    }
+
+    function attachExpandButtons() {
+        document.querySelectorAll(".chart-box").forEach((box) => {
+            if (box.querySelector(".expand-chart-btn")) return;
+            const plotTarget = box.querySelector("div[id]");
+            if (!plotTarget) return;
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = "expand-chart-btn secondary";
+            button.textContent = "Expand";
+            button.addEventListener("click", (event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                const backdrop = ensurePlotlyModal();
+                const modalTitle = backdrop.querySelector("#plotlyChartModalTitle");
+                const modalBody = backdrop.querySelector("#plotlyChartModalBody");
+                if (modalTitle) {
+                    modalTitle.textContent = plotTarget.layout?.title?.text || plotTarget.id || "Expanded chart";
+                }
+                if (modalBody) {
+                    modalBody.innerHTML = "<div id=\"plotlyExpandedChart\" style=\"width:100%;height:100%;min-height:520px;\"></div>";
+                    const expanded = modalBody.querySelector("#plotlyExpandedChart");
+                    if (expanded && globalThis.Plotly && plotTarget.data) {
+                        const data = JSON.parse(JSON.stringify(plotTarget.data));
+                        const layout = JSON.parse(JSON.stringify(plotTarget.layout || {}));
+                        globalThis.Plotly.newPlot(expanded, data, layout, { responsive: true, displayModeBar: true });
+                    }
+                }
+                backdrop.classList.add("open");
+            });
+            box.appendChild(button);
+        });
+    }
+
     return {
         STATUS_COLORS,
         safeNumber,
@@ -125,6 +202,8 @@
         sortByDate,
         sparklineSvg,
         statusColor,
-        toDateString
+        toDateString,
+        downloadCsv,
+        attachExpandButtons
     };
 });

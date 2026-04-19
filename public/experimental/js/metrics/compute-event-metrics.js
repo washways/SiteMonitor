@@ -74,6 +74,20 @@
         return "variable_sustained";
     }
 
+    function computeRunDryRisk(metrics = {}, options = {}) {
+        const severeDrawdownM = Number.isFinite(Number(options.severeDrawdownM)) ? Number(options.severeDrawdownM) : 2.5;
+        const collapseRatioThreshold = Number.isFinite(Number(options.runDryCollapseRatioThreshold)) ? Number(options.runDryCollapseRatioThreshold) : 0.55;
+        let score = 0;
+
+        if (metrics.eventProfile === "tapering_or_drawdown_limited") score += 35;
+        if (Number.isFinite(metrics.flowCollapseRatio) && metrics.flowCollapseRatio <= collapseRatioThreshold) score += 25;
+        if (Number.isFinite(metrics.maximumDrawdown) && metrics.maximumDrawdown >= severeDrawdownM) score += 20;
+        if (!metrics.stableTailSupported && Number.isFinite(metrics.tailFlowCv) && metrics.tailFlowCv > (options.stableTailCvThreshold || 0.2)) score += 10;
+        if (Number.isFinite(metrics.drawdown) && Number.isFinite(metrics.maximumDrawdown) && metrics.maximumDrawdown > Math.max(metrics.drawdown * 1.15, metrics.drawdown + 0.2)) score += 10;
+
+        return Math.max(0, Math.min(100, Math.round(score)));
+    }
+
     function buildQualityFlags(eventState, metrics, options) {
         const flags = new Set(eventState.flags || []);
         const minDrawdownM = Number.isFinite(Number(options.minDrawdownM)) ? Number(options.minDrawdownM) : 0.05;
@@ -97,6 +111,12 @@
         }
         if (metrics.eventProfile === "tapering_or_drawdown_limited") {
             flags.add("tapering_flow_pattern");
+        }
+        if (metrics.possibleIntakeLimitationFlag) {
+            flags.add("possible_intake_limitation");
+        }
+        if (metrics.possibleRunDryFlag) {
+            flags.add("possible_run_dry_event");
         }
         if (eventState.provider === "SonSetLink") {
             flags.add("approximate_daily_event");
@@ -174,6 +194,7 @@
             const stableTailMeanFlow = mean(tailFlows);
             const tailFlowCv = coefficientOfVariation(tailFlows);
             const stableTailSupported = tailFlows.length >= minStableTailPoints && Number.isFinite(tailFlowCv) && tailFlowCv <= stableTailCvThreshold;
+            const flowCollapseRatio = (Number.isFinite(maxFlow) && maxFlow > 0 && Number.isFinite(lastValidNonZeroFlow)) ? (lastValidNonZeroFlow / maxFlow) : null;
             const eventProfile = determineEventProfile({
                 durationHours,
                 positiveCount: positiveFlowPoints.length,
@@ -182,6 +203,20 @@
                 lastFlow: lastValidNonZeroFlow,
                 stableTailSupported
             }, options);
+            const runDryRiskScore = computeRunDryRisk({
+                eventProfile,
+                flowCollapseRatio,
+                maximumDrawdown,
+                drawdown,
+                stableTailSupported,
+                tailFlowCv
+            }, {
+                severeDrawdownM: options.severeDrawdownM,
+                runDryCollapseRatioThreshold: options.runDryCollapseRatioThreshold,
+                stableTailCvThreshold
+            });
+            const possibleRunDryFlag = runDryRiskScore >= 50;
+            const possibleIntakeLimitationFlag = possibleRunDryFlag || (eventProfile === "tapering_or_drawdown_limited" && Number.isFinite(maximumDrawdown) && maximumDrawdown >= 1.5);
 
             const specificCapacityCandidates = {
                 current_proxy: computeSpecificCapacity(lastValidNonZeroFlow, drawdown, minDrawdownM),
@@ -204,7 +239,9 @@
                 maximumDrawdown,
                 stableTailSupportCount: tailFlows.length,
                 tailFlowCv,
-                eventProfile
+                eventProfile,
+                possibleRunDryFlag,
+                possibleIntakeLimitationFlag
             }, {
                 minDrawdownM,
                 stableTailCvThreshold,
@@ -234,7 +271,11 @@
                 stable_tail_support_count: tailFlows.length,
                 has_stable_tail_support: stableTailSupported,
                 flow_stability_cv: round(tailFlowCv, 3),
+                flow_collapse_ratio: round(flowCollapseRatio, 3),
                 flow_behavior_profile: eventProfile,
+                run_dry_risk_score: runDryRiskScore,
+                possible_run_dry_flag: possibleRunDryFlag,
+                possible_intake_limitation_flag: possibleIntakeLimitationFlag,
                 specific_capacity_m3h_per_m: round(specificCapacityCandidates.current_proxy, 3),
                 preferred_specific_capacity_method: preferredSpecificCapacityMethod,
                 preferred_specific_capacity_m3h_per_m: getSpecificCapacityByMethod({

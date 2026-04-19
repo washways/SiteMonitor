@@ -88,6 +88,7 @@
         const unreliableIndex = Number(row.data_unreliability_index) || 0;
         const downtimeShare = Number(row.downtime_proxy_share) || 0;
         const maxDrawdown = Number(row.max_drawdown_observed_m) || 0;
+        const runDryShare = Number(row.run_dry_candidate_event_share) || 0;
         const medianQs = Number(row.median_valid_specific_capacity_m3h_per_m);
         const earlyLife = isEarlyLifeContext(row);
         const moderateLowQs = Number.isFinite(medianQs) && medianQs > 0 && medianQs <= cohort.lowQsThreshold;
@@ -95,13 +96,18 @@
         const stressSignals = row.stress_flag || maxDrawdown >= cohort.drawdownReviewThreshold || moderateLowQs;
         const severeStressSignals = maxDrawdown >= cohort.severeDrawdownThreshold || severeLowQs || (downtimeShare >= 0.5 && activeShare >= 0.25);
         const severeReliabilityConcern = downtimeShare >= 0.85 || (unreliableIndex >= cohort.unreliabilityThreshold && activeShare <= 0.2);
+        const possibleRunDryPattern = runDryShare >= 0.3 || row.flow_behavior_profile === "possible_intake_limited";
 
         if (readiness === "D" || (activeShare <= 0.02 && totalVolume <= 0 && !row.stress_flag)) {
             return "insufficient_data";
         }
 
-        if (severeReliabilityConcern) {
+        if (severeReliabilityConcern || (possibleRunDryPattern && downtimeShare >= 0.4)) {
             return "unreliable_or_possible_fault";
+        }
+
+        if (possibleRunDryPattern) {
+            return "stressed";
         }
 
         if (row.performance_decline_flag && hasStrongBaseline(row) && (severeStressSignals || stressSignals || activeShare >= 0.4)) {
@@ -129,6 +135,7 @@
         const unreliableIndex = Number(row.data_unreliability_index) || 0;
         const downtimeShare = Number(row.downtime_proxy_share) || 0;
         const maxDrawdown = Number(row.max_drawdown_observed_m) || 0;
+        const runDryShare = Number(row.run_dry_candidate_event_share) || 0;
         const medianQs = Number(row.median_valid_specific_capacity_m3h_per_m);
 
         if (activeShare >= 0.6 || totalVolume >= cohort.highUseVolumeThreshold) reasons.push("high_use_observed");
@@ -136,6 +143,7 @@
         if (row.stress_flag) reasons.push(...(row.stress_reasons || []));
         if ((row.short_burst_event_share || 0) >= 0.6) reasons.push("short_burst_usage_pattern");
         if ((row.stable_tail_event_share || 0) >= 0.5) reasons.push("stable_tail_qs_support");
+        if (runDryShare >= 0.3 || row.flow_behavior_profile === "possible_intake_limited") reasons.push("possible_run_dry_or_intake_limitation");
         if (maxDrawdown >= cohort.drawdownReviewThreshold) reasons.push("elevated_drawdown");
         if (Number.isFinite(medianQs) && medianQs > 0 && medianQs <= cohort.lowQsThreshold) reasons.push("low_specific_capacity");
         if (downtimeShare >= 0.3) reasons.push("repeated_non_pumping_days");
@@ -154,6 +162,7 @@
         const unreliableIndex = Number(row.data_unreliability_index) || 0;
         const downtimeShare = Number(row.downtime_proxy_share) || 0;
         const maxDrawdown = Number(row.max_drawdown_observed_m) || 0;
+        const runDryShare = Number(row.run_dry_candidate_event_share) || 0;
         const medianQs = Number(row.median_valid_specific_capacity_m3h_per_m);
         const earlyLife = isEarlyLifeContext(row);
 
@@ -172,6 +181,7 @@
         if (maxDrawdown >= cohort.severeDrawdownThreshold) score += 8;
         if (Number.isFinite(medianQs) && medianQs > 0 && medianQs <= cohort.lowQsThreshold) score += 8;
         if (Number.isFinite(medianQs) && medianQs > 0 && medianQs <= Math.min(0.25, cohort.lowQsThreshold)) score += 8;
+        if (runDryShare >= 0.3) score += 8;
         if (row.performance_decline_flag && !earlyLife) score += 6;
         if (earlyLife && statusCategory !== "unreliable_or_possible_fault") score -= 10;
         if (earlyLife && statusCategory === "stressed" && !(maxDrawdown >= cohort.severeDrawdownThreshold || (Number.isFinite(medianQs) && medianQs > 0 && medianQs <= Math.min(0.25, cohort.lowQsThreshold)))) {
@@ -204,6 +214,9 @@
                 : `This borehole is carrying a relatively high operational load (${round(volume, 1)} m³ observed) but is not currently showing the main stress triggers.${row.flow_behavior_profile ? ` The dominant event profile looks ${row.flow_behavior_profile.replace(/_/g, " ")}.` : ""}`;
         }
         if (statusCategory === "stressed") {
+            if ((Number(row.run_dry_candidate_event_share) || 0) >= 0.3 || row.flow_behavior_profile === "possible_intake_limited") {
+                return `This borehole shows repeated drawdown-limited or possible near-intake pumping behaviour, so low-flow periods may not be purely aquifer-driven.`;
+            }
             return earlyLife
                 ? `Some early-life telemetry signals merit review, but this is not yet strong evidence of a confirmed long-term decline.`
                 : `This borehole shows a stressed pattern, with recent drawdown reaching about ${round(drawdown, 2)} m${Number.isFinite(qs) ? ` and median Q/S near ${round(qs, 3)}` : ""}.`;
@@ -212,7 +225,9 @@
             return `The recent pattern suggests declining performance relative to the borehole's own recent baseline and should be investigated.`;
         }
         if (statusCategory === "unreliable_or_possible_fault") {
-            return `The recent telemetry pattern looks unreliable enough to suggest a possible borehole, power, sensor, or communications issue.`;
+            return (Number(row.run_dry_candidate_event_share) || 0) >= 0.3
+                ? `The recent telemetry pattern suggests possible run-dry or intake-limited pumping and should be checked in the field alongside power and sensor health.`
+                : `The recent telemetry pattern looks unreliable enough to suggest a possible borehole, power, sensor, or communications issue.`;
         }
         return "There is not enough recent trustworthy evidence to make a confident health judgement for this borehole.";
     }

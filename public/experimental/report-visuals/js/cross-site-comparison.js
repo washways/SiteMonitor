@@ -10,6 +10,9 @@
         active_day_share: "Active-day share",
         median_valid_specific_capacity_m3h_per_m: "Median valid specific capacity",
         max_drawdown_observed_m: "Maximum drawdown",
+        latest_resting_level_m: "Latest resting level",
+        latest_dynamic_level_m: "Latest dynamic level",
+        run_dry_candidate_event_share: "Possible run-dry event share",
         downtime_proxy_share: "Downtime proxy share",
         data_unreliability_index: "Data unreliability index",
         maintenance_priority_score: "Maintenance priority score"
@@ -144,10 +147,12 @@
         const byDecline = [...filtered.healthRows].filter((row) => row.status_category === "declining_performance" || row.performance_decline_flag).sort((a, b) => (b.maintenance_priority_score || 0) - (a.maintenance_priority_score || 0));
         const byUnreliable = [...filtered.healthRows].sort((a, b) => (b.data_unreliability_index || 0) - (a.data_unreliability_index || 0)).slice(0, 8);
         const byQs = [...filtered.healthRows].sort((a, b) => (b.median_valid_specific_capacity_m3h_per_m || -999) - (a.median_valid_specific_capacity_m3h_per_m || -999)).slice(0, 8);
+        const byRunDry = [...filtered.healthRows].sort((a, b) => (b.run_dry_candidate_event_share || 0) - (a.run_dry_candidate_event_share || 0)).slice(0, 8);
 
         el("rankedTables").innerHTML = `
             <div class="viz-grid">
                 ${rankedTable("Stress ranking", byStress, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Rank", key: "rank_most_stressed" }, { label: "Status", value: (row) => row.status_label || row.status_category }])}
+                ${rankedTable("Possible run-dry ranking", byRunDry, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Candidate share", value: (row) => Utils.formatPercent(row.run_dry_candidate_event_share, 0) }, { label: "Flow profile", value: (row) => row.flow_behavior_profile || "—" }])}
                 ${rankedTable("Downtime ranking", byDowntime, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Downtime", value: (row) => Utils.formatPercent(row.downtime_proxy_share, 0) }, { label: "Status", value: (row) => row.status_label || row.status_category }])}
                 ${rankedTable("Decline ranking", byDecline, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Priority", key: "maintenance_priority_label" }, { label: "Reasons", value: (row) => (row.transparent_reasons || []).join(", ") }])}
                 ${rankedTable("Unreliability ranking", byUnreliable, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Index", key: "data_unreliability_index" }, { label: "Status", value: (row) => row.status_label || row.status_category }])}
@@ -165,6 +170,7 @@
         renderScatter(filtered);
         renderBreakdown(filtered);
         renderRankedTables(filtered);
+        Utils.attachExpandButtons();
         setStatus(`Rendered cross-site comparison for ${filtered.healthRows.length} boreholes.`);
     }
 
