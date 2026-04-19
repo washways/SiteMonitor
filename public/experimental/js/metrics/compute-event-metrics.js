@@ -18,13 +18,85 @@
         return Number.isFinite(value) ? Number(value.toFixed(digits)) : null;
     }
 
-    function buildQualityFlags(eventState, drawdown, options) {
+    function mean(values = []) {
+        const valid = values.filter((value) => Number.isFinite(Number(value))).map(Number);
+        if (!valid.length) return null;
+        return valid.reduce((sum, value) => sum + value, 0) / valid.length;
+    }
+
+    function median(values = []) {
+        const valid = values.filter((value) => Number.isFinite(Number(value))).map(Number).sort((a, b) => a - b);
+        if (!valid.length) return null;
+        const mid = Math.floor(valid.length / 2);
+        return valid.length % 2 === 0 ? (valid[mid - 1] + valid[mid]) / 2 : valid[mid];
+    }
+
+    function coefficientOfVariation(values = []) {
+        const valid = values.filter((value) => Number.isFinite(Number(value))).map(Number);
+        if (valid.length < 2) return null;
+        const avg = mean(valid);
+        if (!Number.isFinite(avg) || avg === 0) return null;
+        const variance = valid.reduce((sum, value) => sum + ((value - avg) ** 2), 0) / valid.length;
+        return Math.sqrt(variance) / avg;
+    }
+
+    function computeSpecificCapacity(flow, drawdown, minDrawdownM) {
+        return (Number.isFinite(flow) && flow > 0 && Number.isFinite(drawdown) && drawdown >= minDrawdownM)
+            ? (flow / drawdown)
+            : null;
+    }
+
+    function determineTailWindow(flowPoints = [], options = {}) {
+        if (!flowPoints.length) return [];
+        const minTailPoints = Number.isFinite(Number(options.minStableTailPoints)) ? Number(options.minStableTailPoints) : 3;
+        const tailFraction = Number.isFinite(Number(options.stableTailFraction)) ? Number(options.stableTailFraction) : 0.3;
+        const tailCount = Math.min(flowPoints.length, Math.max(minTailPoints, Math.ceil(flowPoints.length * tailFraction)));
+        return flowPoints.slice(-tailCount);
+    }
+
+    function determineEventProfile(metrics = {}, options = {}) {
+        const shortBurstHours = Number.isFinite(Number(options.shortBurstHours)) ? Number(options.shortBurstHours) : 0.75;
+        const durationHours = Number(metrics.durationHours) || 0;
+        const positiveCount = Number(metrics.positiveCount) || 0;
+        const tailFlowCv = Number(metrics.tailFlowCv);
+        const maxFlow = Number(metrics.maxFlow);
+        const lastFlow = Number(metrics.lastFlow);
+
+        if (positiveCount <= 2 || durationHours < shortBurstHours) {
+            return "short_burst";
+        }
+        if (metrics.stableTailSupported && Number.isFinite(tailFlowCv) && tailFlowCv <= (options.stableTailCvThreshold || 0.2) && durationHours >= 1) {
+            return "stable_sustained";
+        }
+        if (Number.isFinite(maxFlow) && maxFlow > 0 && Number.isFinite(lastFlow) && lastFlow < (maxFlow * 0.75)) {
+            return "tapering_or_drawdown_limited";
+        }
+        return "variable_sustained";
+    }
+
+    function buildQualityFlags(eventState, metrics, options) {
         const flags = new Set(eventState.flags || []);
+        const minDrawdownM = Number.isFinite(Number(options.minDrawdownM)) ? Number(options.minDrawdownM) : 0.05;
+        const minStableTailPoints = Number.isFinite(Number(options.minStableTailPoints)) ? Number(options.minStableTailPoints) : 3;
+        const stableTailCvThreshold = Number.isFinite(Number(options.stableTailCvThreshold)) ? Number(options.stableTailCvThreshold) : 0.2;
+
         if (!eventState.start_level_point || !eventState.last_positive_level_point) {
             flags.add("insufficient_water_level");
         }
-        if (!Number.isFinite(drawdown) || drawdown < (options.minDrawdownM || 0.05)) {
+        if (!Number.isFinite(metrics.drawdown) || metrics.drawdown < minDrawdownM) {
             flags.add("invalid_specific_capacity");
+        }
+        if ((metrics.stableTailSupportCount || 0) < minStableTailPoints) {
+            flags.add("limited_stable_tail_support");
+        }
+        if (Number.isFinite(metrics.tailFlowCv) && metrics.tailFlowCv > stableTailCvThreshold) {
+            flags.add("unstable_tail_flow");
+        }
+        if (metrics.eventProfile === "short_burst") {
+            flags.add("short_burst_event");
+        }
+        if (metrics.eventProfile === "tapering_or_drawdown_limited") {
+            flags.add("tapering_flow_pattern");
         }
         if (eventState.provider === "SonSetLink") {
             flags.add("approximate_daily_event");
@@ -52,15 +124,40 @@
         return total;
     }
 
+    function resolvePreferredMethod(candidates = {}) {
+        if (Number.isFinite(Number(candidates.stable_tail_proxy))) return "stable_tail_proxy";
+        if (Number.isFinite(Number(candidates.event_median_proxy))) return "event_median_proxy";
+        if (Number.isFinite(Number(candidates.current_proxy))) return "current_proxy";
+        if (Number.isFinite(Number(candidates.late_mean_proxy))) return "late_mean_proxy";
+        if (Number.isFinite(Number(candidates.max_stress_proxy))) return "max_stress_proxy";
+        return "current_proxy";
+    }
+
+    function getSpecificCapacityByMethod(rowOrCandidates = {}, method = "preferred") {
+        const candidates = rowOrCandidates?.specific_capacity_candidates || rowOrCandidates || {};
+        const preferredMethod = rowOrCandidates?.preferred_specific_capacity_method || resolvePreferredMethod(candidates);
+        const selectedMethod = method === "preferred" ? preferredMethod : method;
+        const value = candidates[selectedMethod];
+        if (Number.isFinite(Number(value))) return round(Number(value), 3);
+        const fallbackValue = candidates[preferredMethod];
+        return Number.isFinite(Number(fallbackValue)) ? round(Number(fallbackValue), 3) : null;
+    }
+
     function computeEventMetrics(detectionResult, options = {}) {
         const rows = [];
         const completedEvents = detectionResult?.completed_events || [];
         const minDrawdownM = Number.isFinite(Number(options.minDrawdownM)) ? Number(options.minDrawdownM) : 0.05;
+        const stableTailCvThreshold = Number.isFinite(Number(options.stableTailCvThreshold)) ? Number(options.stableTailCvThreshold) : 0.2;
+        const minStableTailPoints = Number.isFinite(Number(options.minStableTailPoints)) ? Number(options.minStableTailPoints) : 3;
+        const requestedQsMethod = String(options.qsMethod || "preferred");
 
         completedEvents.forEach((eventState, index) => {
             const positiveFlowPoints = (eventState.points || []).filter((point) => Number(point.value) > (detectionResult.flow_threshold || 0.1));
             if (!positiveFlowPoints.length) return;
 
+            const positiveFlows = positiveFlowPoints.map((point) => Number(point.value)).filter((value) => Number.isFinite(value) && value > 0);
+            const tailPoints = determineTailWindow(positiveFlowPoints, options);
+            const tailFlows = tailPoints.map((point) => Number(point.value)).filter((value) => Number.isFinite(value) && value > 0);
             const lastPositivePoint = positiveFlowPoints[positiveFlowPoints.length - 1];
             const startLevel = eventState.start_level_point?.value ?? null;
             const endLevel = eventState.last_positive_level_point?.value ?? null;
@@ -70,10 +167,49 @@
             const totalVolume = estimateTotalVolume(positiveFlowPoints);
             const durationHours = (eventState.end_ms - eventState.start_ms) / HOUR_MS;
             const lastValidNonZeroFlow = Number(lastPositivePoint.value);
-            const specificCapacity = (Number.isFinite(drawdown) && drawdown >= minDrawdownM && lastValidNonZeroFlow > 0)
-                ? (lastValidNonZeroFlow / drawdown)
-                : null;
-            const qualityFlags = buildQualityFlags(eventState, drawdown, { minDrawdownM });
+            const maxFlow = positiveFlows.length ? Math.max(...positiveFlows) : null;
+            const medianPositiveFlow = median(positiveFlows);
+            const meanPositiveFlow = mean(positiveFlows);
+            const stableTailMedianFlow = median(tailFlows);
+            const stableTailMeanFlow = mean(tailFlows);
+            const tailFlowCv = coefficientOfVariation(tailFlows);
+            const stableTailSupported = tailFlows.length >= minStableTailPoints && Number.isFinite(tailFlowCv) && tailFlowCv <= stableTailCvThreshold;
+            const eventProfile = determineEventProfile({
+                durationHours,
+                positiveCount: positiveFlowPoints.length,
+                tailFlowCv,
+                maxFlow,
+                lastFlow: lastValidNonZeroFlow,
+                stableTailSupported
+            }, options);
+
+            const specificCapacityCandidates = {
+                current_proxy: computeSpecificCapacity(lastValidNonZeroFlow, drawdown, minDrawdownM),
+                max_stress_proxy: computeSpecificCapacity(maxFlow, maximumDrawdown, minDrawdownM),
+                event_median_proxy: computeSpecificCapacity(medianPositiveFlow, maximumDrawdown, minDrawdownM),
+                stable_tail_proxy: stableTailSupported ? computeSpecificCapacity(stableTailMedianFlow, maximumDrawdown, minDrawdownM) : null,
+                late_mean_proxy: tailFlows.length >= minStableTailPoints ? computeSpecificCapacity(stableTailMeanFlow, maximumDrawdown, minDrawdownM) : null
+            };
+            const preferredSpecificCapacityMethod = resolvePreferredMethod(specificCapacityCandidates);
+            const requestedSpecificCapacityMethod = requestedQsMethod === "preferred" ? preferredSpecificCapacityMethod : requestedQsMethod;
+            const selectedSpecificCapacity = getSpecificCapacityByMethod({
+                specific_capacity_candidates: specificCapacityCandidates,
+                preferred_specific_capacity_method: preferredSpecificCapacityMethod
+            }, requestedQsMethod);
+            const selectedSpecificCapacityMethod = Number.isFinite(Number(specificCapacityCandidates[requestedSpecificCapacityMethod]))
+                ? requestedSpecificCapacityMethod
+                : preferredSpecificCapacityMethod;
+            const qualityFlags = buildQualityFlags(eventState, {
+                drawdown,
+                maximumDrawdown,
+                stableTailSupportCount: tailFlows.length,
+                tailFlowCv,
+                eventProfile
+            }, {
+                minDrawdownM,
+                stableTailCvThreshold,
+                minStableTailPoints
+            });
 
             rows.push({
                 borehole_id: eventState.borehole_id,
@@ -86,10 +222,30 @@
                 groundwater_level_at_event_start_m: round(startLevel, 3),
                 groundwater_level_at_last_valid_non_zero_flow_m: round(endLevel, 3),
                 drawdown_m: round(drawdown, 3),
-                last_valid_non_zero_flow_m3h: round(lastValidNonZeroFlow, 3),
-                specific_capacity_m3h_per_m: round(specificCapacity, 3),
+                late_event_drawdown_m: round(drawdown, 3),
                 deepest_level_reached_m: round(deepestLevel, 3),
                 maximum_drawdown_m: round(maximumDrawdown, 3),
+                last_valid_non_zero_flow_m3h: round(lastValidNonZeroFlow, 3),
+                max_flow_m3h: round(maxFlow, 3),
+                mean_positive_flow_m3h: round(meanPositiveFlow, 3),
+                median_positive_flow_m3h: round(medianPositiveFlow, 3),
+                stable_tail_flow_median_m3h: round(stableTailMedianFlow, 3),
+                stable_tail_flow_mean_m3h: round(stableTailMeanFlow, 3),
+                stable_tail_support_count: tailFlows.length,
+                has_stable_tail_support: stableTailSupported,
+                flow_stability_cv: round(tailFlowCv, 3),
+                flow_behavior_profile: eventProfile,
+                specific_capacity_m3h_per_m: round(specificCapacityCandidates.current_proxy, 3),
+                preferred_specific_capacity_method: preferredSpecificCapacityMethod,
+                preferred_specific_capacity_m3h_per_m: getSpecificCapacityByMethod({
+                    specific_capacity_candidates: specificCapacityCandidates,
+                    preferred_specific_capacity_method: preferredSpecificCapacityMethod
+                }, "preferred"),
+                selected_specific_capacity_method: selectedSpecificCapacityMethod,
+                selected_specific_capacity_m3h_per_m: selectedSpecificCapacity,
+                specific_capacity_candidates: Object.fromEntries(
+                    Object.entries(specificCapacityCandidates).map(([key, value]) => [key, round(value, 3)])
+                ),
                 quality_flags: qualityFlags
             });
         });
@@ -98,6 +254,8 @@
     }
 
     return {
-        computeEventMetrics
+        computeEventMetrics,
+        getSpecificCapacityByMethod,
+        resolvePreferredMethod
     };
 });

@@ -177,24 +177,38 @@ A second, stronger event indicator is:
 This captures the deepest response observed during the event, not just the value at the last positive-flow point.
 
 ### 6.6 Specific capacity, Q/S
-The implemented event-level formula is:
+The experimental layer now computes several switchable event-level Q/S candidates rather than only one value.
 
-- specific_capacity_m3h_per_m = last_valid_non_zero_flow_m3h ÷ drawdown_m
+These include:
 
-but **only** when:
+- current proxy = last valid non-zero flow ÷ end-of-event drawdown
+- max stress proxy = maximum observed flow ÷ maximum observed drawdown
+- event median proxy = median positive event flow ÷ maximum observed drawdown
+- stable-tail proxy = median late-event stable flow ÷ maximum observed drawdown
+- late mean proxy = average late-event flow ÷ maximum observed drawdown
+
+All of these are only treated as valid when:
 
 - drawdown is finite
 - drawdown is at least the minimum drawdown threshold
-- the last valid non-zero flow is positive
+- the selected flow statistic is positive
 
 In the current code, the minimum drawdown guard defaults to 0.05 m.
 
-If drawdown is missing, too small, or otherwise unsuitable, Q/S is set to null and flagged instead of being forced.
+If drawdown is missing, too small, or otherwise unsuitable, the relevant Q/S value is set to null and flagged instead of being forced.
 
-### 6.7 Why the Q/S uses the last valid non-zero flow
-The current research implementation uses the last valid positive flow during the event because it is a simple, transparent, event-end proxy that avoids using zero or post-stop values.
+### 6.7 Preferred auto-selection
+The current research implementation now supports a **preferred auto** mode that tries to choose the most supported candidate for each event.
 
-This is a research simplification, not a claim that it is the only possible hydrogeologic formulation.
+The preference order is currently:
+
+1. stable-tail proxy
+2. event median proxy
+3. current proxy
+4. late mean proxy
+5. max stress proxy
+
+This gives the pages a more pump-test-like option where the telemetry supports it, while still preserving continuity with the earlier operational proxy.
 
 ---
 

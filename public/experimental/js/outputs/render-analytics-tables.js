@@ -15,6 +15,10 @@
             .replace(/'/g, "&#39;");
     }
 
+    function humanize(value) {
+        return String(value ?? "—").replace(/_/g, " ");
+    }
+
     function renderTable(target, rows = [], columns = [], emptyMessage = "No rows available.") {
         if (!target) return;
         if (!rows.length) {
@@ -57,6 +61,9 @@
                     <div><strong>Active sites:</strong> ${escapeHtml(summary.active_site_count || 0)}</div>
                     <div><strong>Telemetry-ready:</strong> ${escapeHtml(summary.telemetry_ready_site_count || 0)}</div>
                     <div><strong>Stress-review sites:</strong> ${escapeHtml(summary.stressed_site_count || 0)}</div>
+                    <div><strong>Stable-tail capable sites:</strong> ${escapeHtml(summary.stable_tail_capable_site_count || 0)}</div>
+                    <div><strong>Short-burst dominant sites:</strong> ${escapeHtml(summary.short_burst_dominant_site_count || 0)}</div>
+                    <div><strong>Q/S mode:</strong> ${escapeHtml(analytics.qs_method_label || summary.qs_method_used || "preferred")}</div>
                     <div><strong>Total observed volume:</strong> ${escapeHtml(summary.total_observed_volume_m3 || 0)}</div>
                 </div>`;
         }
@@ -85,11 +92,14 @@
             { label: "Date", key: "date" },
             { label: "Borehole", value: (row) => row.display_name || row.borehole_id },
             { label: "Provider", key: "provider" },
+            { label: "Q/S Method", value: (row) => humanize(row.active_qs_method) },
             { label: "Daily Volume", key: "daily_pumped_volume_m3" },
             { label: "Hours Pumped", key: "total_hours_pumped" },
             { label: "Events", key: "event_count" },
+            { label: "Max Flow", key: "daily_max_flow_m3h" },
             { label: "Max Drawdown", key: "maximum_drawdown_m" },
-            { label: "Median Q/S", key: "median_specific_capacity_m3h_per_m" },
+            { label: "Selected Q/S", key: "median_specific_capacity_m3h_per_m" },
+            { label: "Stable-tail Events", key: "stable_tail_event_count" },
             { label: "Resting Level", key: "estimated_daily_resting_level_m" },
             { label: "Flags", value: (row) => (row.daily_quality_flags || []).join(", ") }
         ], "No daily summary rows were produced.");
@@ -97,10 +107,13 @@
         renderTable(targets.rolling, analytics.rolling_rows || [], [
             { label: "Date", key: "date" },
             { label: "Borehole", value: (row) => row.display_name || row.borehole_id },
+            { label: "Q/S Method", value: (row) => humanize(row.qs_method) },
             { label: "7d Volume", key: "rolling_7d_volume_m3" },
             { label: "30d Volume", key: "rolling_30d_volume_m3" },
             { label: "7d Q/S", key: "rolling_7d_specific_capacity_median" },
             { label: "30d Q/S", key: "rolling_30d_specific_capacity_median" },
+            { label: "30d Max Flow", key: "rolling_30d_max_flow_m3h" },
+            { label: "30d Stable-tail Share", key: "rolling_30d_stable_tail_share" },
             { label: "7d Rest Trend", key: "resting_level_trend_7d_m_per_day" },
             { label: "30d Rest Trend", key: "resting_level_trend_30d_m_per_day" },
             { label: "30d Stress Count", key: "rolling_30d_stress_event_count" },
@@ -111,9 +124,12 @@
             { label: "Borehole", value: (row) => row.display_name || row.borehole_id },
             { label: "Provider", key: "provider" },
             { label: "Tier", key: "analysis_readiness_tier" },
-            { label: "Typology", key: "typology_group" },
+            { label: "Typology", value: (row) => humanize(row.typology_group) },
+            { label: "Q/S Method", value: (row) => humanize(row.qs_method_used) },
+            { label: "Flow Profile", value: (row) => humanize(row.flow_behavior_profile) },
             { label: "Total Volume", key: "total_volume_m3" },
             { label: "Active Day Share", key: "active_day_share" },
+            { label: "Stable-tail Share", key: "stable_tail_event_share" },
             { label: "Downtime Days", key: "downtime_proxy_days" },
             { label: "Median Q/S", key: "median_valid_specific_capacity_m3h_per_m" },
             { label: "Max Drawdown", key: "max_drawdown_observed_m" },

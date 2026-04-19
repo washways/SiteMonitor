@@ -134,6 +134,8 @@
         if (activeShare >= 0.6 || totalVolume >= cohort.highUseVolumeThreshold) reasons.push("high_use_observed");
         if (row.performance_decline_flag && hasStrongBaseline(row)) reasons.push("recent_performance_decline");
         if (row.stress_flag) reasons.push(...(row.stress_reasons || []));
+        if ((row.short_burst_event_share || 0) >= 0.6) reasons.push("short_burst_usage_pattern");
+        if ((row.stable_tail_event_share || 0) >= 0.5) reasons.push("stable_tail_qs_support");
         if (maxDrawdown >= cohort.drawdownReviewThreshold) reasons.push("elevated_drawdown");
         if (Number.isFinite(medianQs) && medianQs > 0 && medianQs <= cohort.lowQsThreshold) reasons.push("low_specific_capacity");
         if (downtimeShare >= 0.3) reasons.push("repeated_non_pumping_days");
@@ -199,7 +201,7 @@
         if (statusCategory === "high_use_but_stable") {
             return earlyLife
                 ? `This borehole is active and carrying load (${round(volume, 1)} m³ observed), but the installation baseline is still short so it should be watched rather than escalated.`
-                : `This borehole is carrying a relatively high operational load (${round(volume, 1)} m³ observed) but is not currently showing the main stress triggers.`;
+                : `This borehole is carrying a relatively high operational load (${round(volume, 1)} m³ observed) but is not currently showing the main stress triggers.${row.flow_behavior_profile ? ` The dominant event profile looks ${row.flow_behavior_profile.replace(/_/g, " ")}.` : ""}`;
         }
         if (statusCategory === "stressed") {
             return earlyLife

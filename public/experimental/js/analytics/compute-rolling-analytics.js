@@ -77,22 +77,37 @@
                 const events7 = scopedEvents.filter((detail) => detail.date >= rows7[0]?.date && detail.date <= row.date);
                 const events30 = scopedEvents.filter((detail) => detail.date >= rows30[0]?.date && detail.date <= row.date);
 
-                const qs7 = events7.map((detail) => detail.specific_capacity_m3h_per_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number);
-                const qs30 = events30.map((detail) => detail.specific_capacity_m3h_per_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number);
+                const qs7 = events7.map((detail) => detail.selected_specific_capacity_m3h_per_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number);
+                const qs30 = events30.map((detail) => detail.selected_specific_capacity_m3h_per_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number);
                 const draw7 = events7.map((detail) => detail.drawdown_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number);
                 const draw30 = events30.map((detail) => detail.drawdown_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number);
+                const maxFlow7 = rows7.map((item) => item.daily_max_flow_m3h).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number);
+                const maxFlow30 = rows30.map((item) => item.daily_max_flow_m3h).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number);
+                const eventCount7 = rows7.reduce((sum, item) => sum + (Number(item.event_count) || 0), 0);
+                const eventCount30 = rows30.reduce((sum, item) => sum + (Number(item.event_count) || 0), 0);
+                const stableTailCount7 = rows7.reduce((sum, item) => sum + (Number(item.stable_tail_event_count) || 0), 0);
+                const stableTailCount30 = rows30.reduce((sum, item) => sum + (Number(item.stable_tail_event_count) || 0), 0);
+                const shortBurstCount7 = rows7.reduce((sum, item) => sum + (Number(item.short_burst_event_count) || 0), 0);
+                const shortBurstCount30 = rows30.reduce((sum, item) => sum + (Number(item.short_burst_event_count) || 0), 0);
 
                 output.push({
                     date: row.date,
                     provider,
                     borehole_id: boreholeId,
                     display_name: row.display_name,
+                    qs_method: row.active_qs_method || options.qsMethod || "preferred",
                     rolling_7d_volume_m3: round(rows7.reduce((sum, item) => sum + (Number(item.daily_pumped_volume_m3) || 0), 0)),
                     rolling_30d_volume_m3: round(rows30.reduce((sum, item) => sum + (Number(item.daily_pumped_volume_m3) || 0), 0)),
                     rolling_7d_specific_capacity_median: round(median(qs7)),
                     rolling_30d_specific_capacity_median: round(median(qs30)),
                     rolling_7d_drawdown_median: round(median(draw7)),
                     rolling_30d_drawdown_median: round(median(draw30)),
+                    rolling_7d_max_flow_m3h: round(maxFlow7.length ? Math.max(...maxFlow7) : null),
+                    rolling_30d_max_flow_m3h: round(maxFlow30.length ? Math.max(...maxFlow30) : null),
+                    rolling_7d_stable_tail_share: eventCount7 ? round(stableTailCount7 / eventCount7, 3) : null,
+                    rolling_30d_stable_tail_share: eventCount30 ? round(stableTailCount30 / eventCount30, 3) : null,
+                    rolling_7d_short_burst_count: shortBurstCount7,
+                    rolling_30d_short_burst_count: shortBurstCount30,
                     resting_level_trend_7d_m_per_day: linearTrendPerDay(rows7, "estimated_daily_resting_level_m"),
                     resting_level_trend_30d_m_per_day: linearTrendPerDay(rows30, "estimated_daily_resting_level_m"),
                     rolling_7d_stress_event_count: rows7.reduce((sum, item) => sum + (Number(item.stress_event_count) || 0), 0),

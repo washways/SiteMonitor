@@ -63,6 +63,14 @@
         return "moderate_use";
     }
 
+    function determineFlowBehaviorProfile(summary = {}) {
+        if ((summary.total_events || 0) <= 0) return "insufficient_event_support";
+        if ((summary.short_burst_event_share || 0) >= 0.6) return "mostly_short_burst";
+        if ((summary.stable_tail_event_share || 0) >= 0.5 && (summary.daily_volume_cv || 1) <= 0.5) return "mostly_stable_sustained";
+        if (summary.stress_flag) return "variable_or_stressed";
+        return "mixed_variable";
+    }
+
     function computeBoreholeAnalytics(reportOrSource = {}, dailyRows = [], rollingRows = [], options = {}) {
         const source = reportOrSource?.source || reportOrSource?.normalized?.source || reportOrSource || {};
         const provider = source?.provider || dailyRows[0]?.provider || "Unknown";
@@ -79,6 +87,8 @@
         const totalEvents = orderedDaily.reduce((sum, row) => sum + (Number(row.event_count) || 0), 0);
         const validEventCount = orderedDaily.reduce((sum, row) => sum + (Number(row.valid_specific_capacity_event_count) || 0), 0);
         const downtimeDays = orderedDaily.reduce((sum, row) => sum + (Number(row.downtime_indicator) || 0), 0);
+        const stableTailEvents = orderedDaily.reduce((sum, row) => sum + (Number(row.stable_tail_event_count) || 0), 0);
+        const shortBurstEvents = orderedDaily.reduce((sum, row) => sum + (Number(row.short_burst_event_count) || 0), 0);
         const dataQualityFlagSet = new Set([
             "approximate_source",
             "insufficient_resting_level_support",
@@ -108,10 +118,16 @@
             total_volume_m3: round(totalVolume),
             median_daily_volume_m3: round(median(orderedDaily.map((row) => Number(row.daily_pumped_volume_m3)).filter(Number.isFinite))),
             max_daily_volume_m3: round(Math.max(0, ...orderedDaily.map((row) => Number(row.daily_pumped_volume_m3) || 0))),
+            median_daily_max_flow_m3h: round(median(orderedDaily.map((row) => row.daily_max_flow_m3h).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number))),
             median_hours_pumped_per_active_day: round(median(orderedDaily.filter((row) => Number(row.total_hours_pumped) > 0).map((row) => Number(row.total_hours_pumped))), 2),
             event_frequency_per_week: reviewWindowDays ? round(totalEvents / Math.max(reviewWindowDays / 7, 1), 2) : 0,
             total_events: totalEvents,
+            total_stable_tail_events: stableTailEvents,
+            total_short_burst_events: shortBurstEvents,
+            stable_tail_event_share: totalEvents ? round(stableTailEvents / totalEvents, 3) : 0,
+            short_burst_event_share: totalEvents ? round(shortBurstEvents / totalEvents, 3) : 0,
             valid_specific_capacity_event_count: validEventCount,
+            qs_method_used: latestRolling.qs_method || orderedDaily[orderedDaily.length - 1]?.active_qs_method || "preferred",
             median_valid_specific_capacity_m3h_per_m: round(median(orderedDaily.map((row) => row.median_specific_capacity_m3h_per_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number))),
             median_event_drawdown_m: round(median(orderedDaily.map((row) => row.median_drawdown_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number))),
             max_drawdown_observed_m: round(Math.max(...orderedDaily.map((row) => row.maximum_drawdown_m).filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value))).map(Number), 0)),
@@ -134,6 +150,7 @@
             stress_flag: false,
             analysis_readiness_tier: "D",
             typology_group: "insufficient_data",
+            flow_behavior_profile: "insufficient_event_support",
             summary_quality_flags: []
         };
 
@@ -165,10 +182,12 @@
             totalEvents
         });
         summary.typology_group = determineTypology(summary);
+        summary.flow_behavior_profile = determineFlowBehaviorProfile(summary);
         summary.summary_quality_flags = uniqueFlags([
             ...(summary.approximate ? ["approximate_source"] : []),
             ...(summary.performance_decline_flag ? ["performance_decline_flag"] : []),
             ...(summary.stress_flag ? ["stress_flag"] : []),
+            ...(summary.short_burst_event_share >= 0.6 ? ["short_burst_dominant_use"] : []),
             ...(summary.analysis_readiness_tier === "D" ? ["limited_analysis_readiness"] : [])
         ]);
 

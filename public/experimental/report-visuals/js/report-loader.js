@@ -10,6 +10,14 @@
     const SETTINGS_KEY = "sitemonitor.experimental.visualSettings";
     const RUN_STATE_KEY = "sitemonitor.experimental.visualReportRunState";
     const DEFAULT_MAX_SOURCES = 54;
+    const QS_METHOD_LABELS = {
+        preferred: "Preferred auto",
+        stable_tail_proxy: "Stable-tail median / max drawdown",
+        event_median_proxy: "Event median / max drawdown",
+        current_proxy: "Last flow / end drawdown",
+        late_mean_proxy: "Late mean / max drawdown",
+        max_stress_proxy: "Max flow / max drawdown"
+    };
     let dcpAdapter = null;
     let sslAdapter = null;
 
@@ -119,6 +127,23 @@
         return getQueryParams().get("report") || "";
     }
 
+    function formatQsMethodLabel(method) {
+        return QS_METHOD_LABELS[method] || method || "Preferred auto";
+    }
+
+    function matchesBoreholeFilter(source = {}, query = "") {
+        if (!query) return true;
+        return [
+            source?.borehole_id,
+            source?.site_id,
+            source?.display_name,
+            source?.api_id,
+            source?.metadata?.serial,
+            source?.metadata?.site_name,
+            source?.metadata?.name
+        ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
+    }
+
     function buildDefaultAnalysisSettings() {
         const params = getQueryParams();
         const today = new Date();
@@ -132,7 +157,9 @@
             endDate: params.get("endDate") || saved.endDate || Utils.toDateString(today),
             maxSources: Math.min(54, Math.max(Number(params.get("maxSources") || saved.maxSources || DEFAULT_MAX_SOURCES) || DEFAULT_MAX_SOURCES, DEFAULT_MAX_SOURCES)),
             flowThreshold: Number(params.get("flowThreshold") || saved.flowThreshold || 0.1),
-            graceHours: Number(params.get("graceHours") || saved.graceHours || 2)
+            graceHours: Number(params.get("graceHours") || saved.graceHours || 2),
+            qsMethod: params.get("qsMethod") || saved.qsMethod || "preferred",
+            boreholeFilter: params.get("borehole") || saved.boreholeFilter || ""
         };
     }
 
@@ -145,6 +172,8 @@
         if (byId("analysisMaxSources")) byId("analysisMaxSources").value = defaults.maxSources;
         if (byId("analysisFlowThreshold")) byId("analysisFlowThreshold").value = defaults.flowThreshold;
         if (byId("analysisGraceHours")) byId("analysisGraceHours").value = defaults.graceHours;
+        if (byId("analysisQsMethod")) byId("analysisQsMethod").value = defaults.qsMethod;
+        if (byId("analysisBoreholeFilter")) byId("analysisBoreholeFilter").value = defaults.boreholeFilter;
     }
 
     function getAnalysisSettings(root = document) {
@@ -162,6 +191,8 @@
             maxSources: Math.min(54, Math.max(1, Math.round(Number(byId("analysisMaxSources")?.value || 8) || 8))),
             flowThreshold: Number(byId("analysisFlowThreshold")?.value || 0.1),
             graceHours: Number(byId("analysisGraceHours")?.value || 2),
+            qsMethod: byId("analysisQsMethod")?.value || "preferred",
+            boreholeFilter: String(byId("analysisBoreholeFilter")?.value || "").trim(),
             window: { start, end }
         };
     }
@@ -190,7 +221,10 @@
             flowThreshold: options.flowThreshold,
             graceHours: options.graceHours
         });
-        const eventRows = Exp.ComputeEventMetrics.computeEventMetrics(detected, { minDrawdownM: 0.05 });
+        const eventRows = Exp.ComputeEventMetrics.computeEventMetrics(detected, {
+            minDrawdownM: 0.05,
+            qsMethod: options.qsMethod
+        });
         const report = {
             provider: sourceRef.provider,
             raw,
@@ -199,9 +233,16 @@
             detected,
             event_rows: eventRows
         };
-        const dailyRows = Exp.DailyAnalytics.computeDailyAnalytics(report, { flowThreshold: options.flowThreshold });
-        const rollingRows = Exp.RollingAnalytics.computeRollingAnalytics(dailyRows, dailyRows.event_detail_rows || [], {});
-        const boreholeSummary = Exp.BoreholeAnalytics.computeBoreholeAnalytics(normalized.source, dailyRows, rollingRows, {});
+        const dailyRows = Exp.DailyAnalytics.computeDailyAnalytics(report, {
+            flowThreshold: options.flowThreshold,
+            qsMethod: options.qsMethod
+        });
+        const rollingRows = Exp.RollingAnalytics.computeRollingAnalytics(dailyRows, dailyRows.event_detail_rows || [], {
+            qsMethod: options.qsMethod
+        });
+        const boreholeSummary = Exp.BoreholeAnalytics.computeBoreholeAnalytics(normalized.source, dailyRows, rollingRows, {
+            qsMethod: options.qsMethod
+        });
 
         return {
             report,
@@ -232,7 +273,9 @@
             });
 
             const allSources = await adapter.listSources({ useProxy: true });
-            const selected = [...allSources]
+            const filterQuery = String(settings.boreholeFilter || "").trim().toLowerCase();
+            const filteredSources = filterQuery ? allSources.filter((source) => matchesBoreholeFilter(source, filterQuery)) : allSources;
+            const selected = [...filteredSources]
                 .sort((a, b) => {
                     const aTs = Date.parse(a.metadata?.most_recent_tx || a.metadata?.last_seen || 0) || 0;
                     const bTs = Date.parse(b.metadata?.most_recent_tx || b.metadata?.last_seen || 0) || 0;
@@ -241,14 +284,14 @@
                 .slice(0, settings.maxSources);
 
             if (!selected.length) {
-                throw new Error("No sources were available for the selected provider.");
+                throw new Error(filterQuery ? `No sources matched the borehole filter "${filterQuery}".` : "No sources were available for the selected provider.");
             }
 
             const dailyRows = [];
             const rollingRows = [];
             const boreholeRows = [];
             const sourceReports = [];
-            const batchSize = settings.provider === "SonSetLink" ? 3 : 4;
+            const batchSize = filterQuery ? 1 : (settings.provider === "SonSetLink" ? 3 : 4);
 
             for (let i = 0; i < selected.length; i += batchSize) {
                 const batch = selected.slice(i, i + batchSize);
@@ -268,14 +311,14 @@
                     sourceReports.push(result.report);
                 });
 
-                setStatus(statusTarget, `Processed ${Math.min(i + batchSize, selected.length)} of ${selected.length} sources using real telemetry.`);
+                setStatus(statusTarget, `Processed ${Math.min(i + batchSize, selected.length)} of ${selected.length} sources using ${formatQsMethodLabel(settings.qsMethod)}${filterQuery ? ` for borehole filter \"${filterQuery}\"` : ""}.`);
             }
 
             if (!boreholeRows.length) {
                 throw new Error("No telemetry could be processed for the selected cohort.");
             }
 
-            const network = Exp.NetworkAnalytics.computeNetworkAnalytics(boreholeRows, {});
+            const network = Exp.NetworkAnalytics.computeNetworkAnalytics(boreholeRows, { qsMethod: settings.qsMethod });
             const interpretation = Exp.InterpretationOutputs.computeInterpretationOutputs(boreholeRows, network, {});
             const report = {
                 exported_at: new Date().toISOString(),
@@ -288,7 +331,9 @@
                     start: settings.window.start.toISOString(),
                     end: settings.window.end.toISOString()
                 },
-                analytics_note: "Experimental isolated analytics layer using real normalized telemetry and event outputs.",
+                analytics_note: `Experimental isolated analytics layer using real normalized telemetry and event outputs. Active Q/S mode: ${formatQsMethodLabel(settings.qsMethod)}.`,
+                qs_method_selected: settings.qsMethod,
+                qs_method_label: formatQsMethodLabel(settings.qsMethod),
                 daily_rows: dailyRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
                 rolling_rows: rollingRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
                 borehole_summary_table: boreholeRows.sort((a, b) => String(a.display_name).localeCompare(String(b.display_name))),
@@ -307,7 +352,7 @@
                 loaded_site_count: boreholeRows.length
             });
             const scopeLabel = settings.maxSources >= DEFAULT_MAX_SOURCES ? "full available cohort" : `${settings.maxSources}-source cohort`;
-            setStatus(statusTarget, `Completed ${scopeLabel} analysis for ${boreholeRows.length} sources using the real telemetry pipeline.`);
+            setStatus(statusTarget, `Completed ${scopeLabel} analysis for ${boreholeRows.length} sources using ${formatQsMethodLabel(settings.qsMethod)}.`);
             return buildIndex(report);
         } catch (error) {
             safeRunStateSet({

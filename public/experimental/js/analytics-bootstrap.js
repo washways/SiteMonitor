@@ -5,6 +5,32 @@
     let currentAnalyticsReport = null;
 
     const el = (id) => document.getElementById(id);
+    const QS_METHODS = {
+        preferred: {
+            label: "Preferred auto",
+            description: "Automatically chooses the most supported event-based Q/S candidate, preferring stable-tail flow where available."
+        },
+        stable_tail_proxy: {
+            label: "Stable-tail median / max drawdown",
+            description: "Uses the median late-event stable flow divided by the maximum observed drawdown for the event."
+        },
+        event_median_proxy: {
+            label: "Event median / max drawdown",
+            description: "Uses the median positive flow across the whole event divided by the maximum observed drawdown."
+        },
+        current_proxy: {
+            label: "Last flow / end drawdown",
+            description: "Uses the last valid non-zero event flow divided by the end-of-event drawdown to preserve continuity with the earlier proxy."
+        },
+        late_mean_proxy: {
+            label: "Late mean / max drawdown",
+            description: "Uses the average late-event flow divided by the maximum observed drawdown."
+        },
+        max_stress_proxy: {
+            label: "Max flow / max drawdown",
+            description: "Uses the maximum observed flow and maximum drawdown as a stress-test Q/S proxy."
+        }
+    };
 
     function setStatus(message, isError = false) {
         const target = el("status");
@@ -21,6 +47,37 @@
 
     function getSelectedAdapter() {
         return el("provider")?.value === "SonSetLink" ? sslAdapter : dcpAdapter;
+    }
+
+    function getSelectedQsMethod() {
+        return String(el("qsMethod")?.value || "preferred");
+    }
+
+    function formatQsMethodLabel(method) {
+        return QS_METHODS[method]?.label || method || "Preferred auto";
+    }
+
+    function setQsMethodNote() {
+        const target = el("qsMethodNote");
+        if (!target) return;
+        target.textContent = QS_METHODS[getSelectedQsMethod()]?.description || QS_METHODS.preferred.description;
+    }
+
+    function getBoreholeFilterText() {
+        return String(el("boreholeFilter")?.value || "").trim().toLowerCase();
+    }
+
+    function matchesBoreholeFilter(source = {}, query = "") {
+        if (!query) return true;
+        return [
+            source?.borehole_id,
+            source?.site_id,
+            source?.display_name,
+            source?.api_id,
+            source?.metadata?.serial,
+            source?.metadata?.site_name,
+            source?.metadata?.name
+        ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
     }
 
     function getDateWindow() {
@@ -46,7 +103,10 @@
             flowThreshold: options.flowThreshold,
             graceHours: options.graceHours
         });
-        const eventRows = Exp.ComputeEventMetrics.computeEventMetrics(detected, { minDrawdownM: 0.05 });
+        const eventRows = Exp.ComputeEventMetrics.computeEventMetrics(detected, {
+            minDrawdownM: 0.05,
+            qsMethod: options.qsMethod
+        });
         const report = {
             provider: sourceRef.provider,
             raw,
@@ -55,9 +115,16 @@
             detected,
             event_rows: eventRows
         };
-        const dailyRows = Exp.DailyAnalytics.computeDailyAnalytics(report, { flowThreshold: options.flowThreshold });
-        const rollingRows = Exp.RollingAnalytics.computeRollingAnalytics(dailyRows, dailyRows.event_detail_rows || [], {});
-        const boreholeSummary = Exp.BoreholeAnalytics.computeBoreholeAnalytics(normalized.source, dailyRows, rollingRows, {});
+        const dailyRows = Exp.DailyAnalytics.computeDailyAnalytics(report, {
+            flowThreshold: options.flowThreshold,
+            qsMethod: options.qsMethod
+        });
+        const rollingRows = Exp.RollingAnalytics.computeRollingAnalytics(dailyRows, dailyRows.event_detail_rows || [], {
+            qsMethod: options.qsMethod
+        });
+        const boreholeSummary = Exp.BoreholeAnalytics.computeBoreholeAnalytics(normalized.source, dailyRows, rollingRows, {
+            qsMethod: options.qsMethod
+        });
 
         return {
             report,
@@ -74,10 +141,15 @@
         const ready = (report.borehole_summary_table || []).filter((row) => ["A", "B"].includes(row.analysis_readiness_tier)).length;
         const stressedOrDeclining = (report.health_summary_table || []).filter((row) => ["stressed", "declining_performance"].includes(row.status_category)).length;
         const topPriority = (report.priority_ranking_table || [])[0];
+        const qsMethodLabel = report.qs_method_label || "Preferred auto";
+        const stableTailSites = report.network_summary?.stable_tail_capable_site_count || 0;
+        const shortBurstSites = report.network_summary?.short_burst_dominant_site_count || 0;
         target.innerHTML = `
             <ul>
                 <li><strong>${report.network_summary?.site_count || 0}</strong> sources were processed using the real telemetry pipeline.</li>
                 <li><strong>${ready}</strong> sources are currently in the stronger analysis-ready tiers.</li>
+                <li>The active Q/S mode for this run was <strong>${qsMethodLabel}</strong>.</li>
+                <li><strong>${stableTailSites}</strong> sources showed stable-tail event support, while <strong>${shortBurstSites}</strong> were dominated by short burst usage.</li>
                 <li><strong>${stressedOrDeclining}</strong> boreholes currently fall into the stressed or declining review categories.</li>
                 <li>The top observed abstraction source in this run was <strong>${topVolume?.display_name || "n/a"}</strong>.</li>
                 <li>The current top review priority is <strong>${topPriority?.display_name || "n/a"}</strong> (${topPriority?.maintenance_priority_label || "routine monitoring"}).</li>
@@ -90,10 +162,16 @@
             setStatus("Loading real telemetry sources for the cohort analytics run...");
             const adapter = getSelectedAdapter();
             const window = getDateWindow();
+            const qsMethod = getSelectedQsMethod();
+            const qsMethodLabel = formatQsMethodLabel(qsMethod);
+            const boreholeFilter = getBoreholeFilterText();
             const flowThreshold = Number(el("flowThreshold")?.value || 0.1);
             const graceHours = Number(el("graceHours")?.value || 2);
             const allSources = await adapter.listSources({ useProxy: true });
-            const selected = [...allSources]
+            const filteredSources = boreholeFilter
+                ? allSources.filter((source) => matchesBoreholeFilter(source, boreholeFilter))
+                : allSources;
+            const selected = [...filteredSources]
                 .sort((a, b) => {
                     const aTs = Date.parse(a.metadata?.most_recent_tx || a.metadata?.last_seen || 0) || 0;
                     const bTs = Date.parse(b.metadata?.most_recent_tx || b.metadata?.last_seen || 0) || 0;
@@ -102,7 +180,7 @@
                 .slice(0, getSelectedLimit());
 
             if (!selected.length) {
-                setStatus("No sources were available for the selected provider.", true);
+                setStatus(boreholeFilter ? `No sources matched the borehole filter "${boreholeFilter}".` : "No sources were available for the selected provider.", true);
                 return;
             }
 
@@ -110,13 +188,13 @@
             const rollingRows = [];
             const boreholeRows = [];
             const sourceReports = [];
-            const batchSize = el("provider")?.value === "SonSetLink" ? 3 : 4;
+            const batchSize = boreholeFilter ? 1 : (el("provider")?.value === "SonSetLink" ? 3 : 4);
 
             for (let i = 0; i < selected.length; i += batchSize) {
                 const batch = selected.slice(i, i + batchSize);
                 const results = await Promise.all(batch.map(async (source) => {
                     try {
-                        return await analyzeSource(source, { window, flowThreshold, graceHours });
+                        return await analyzeSource(source, { window, flowThreshold, graceHours, qsMethod });
                     } catch (error) {
                         return { error, source };
                     }
@@ -130,10 +208,15 @@
                     sourceReports.push(result.report);
                 });
 
-                setStatus(`Processed ${Math.min(i + batchSize, selected.length)} of ${selected.length} sources using real telemetry.`);
+                setStatus(`Processed ${Math.min(i + batchSize, selected.length)} of ${selected.length} sources using ${qsMethodLabel}${boreholeFilter ? ` for borehole filter \"${boreholeFilter}\"` : ""}.`);
             }
 
-            const network = Exp.NetworkAnalytics.computeNetworkAnalytics(boreholeRows, {});
+            if (!boreholeRows.length) {
+                setStatus("No telemetry could be processed for the selected cohort.", true);
+                return;
+            }
+
+            const network = Exp.NetworkAnalytics.computeNetworkAnalytics(boreholeRows, { qsMethod });
             const interpretation = Exp.InterpretationOutputs.computeInterpretationOutputs(boreholeRows, network, {});
             currentAnalyticsReport = {
                 exported_at: new Date().toISOString(),
@@ -142,7 +225,10 @@
                     start: window.start.toISOString(),
                     end: window.end.toISOString()
                 },
-                analytics_note: "Experimental isolated analytics layer using real normalized telemetry and event outputs.",
+                analytics_note: `Experimental isolated analytics layer using real normalized telemetry and event outputs. Active Q/S mode: ${qsMethodLabel}.`,
+                qs_method_selected: qsMethod,
+                qs_method_label: qsMethodLabel,
+                borehole_filter: boreholeFilter || null,
                 daily_rows: dailyRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
                 rolling_rows: rollingRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
                 borehole_summary_table: boreholeRows.sort((a, b) => String(a.display_name).localeCompare(String(b.display_name))),
@@ -165,7 +251,7 @@
             if (el("btnJsonAnalytics")) el("btnJsonAnalytics").disabled = false;
             window.SiteMonitorExperimental = window.SiteMonitorExperimental || {};
             window.SiteMonitorExperimental.currentAnalyticsReport = currentAnalyticsReport;
-            setStatus(`Completed cohort analytics for ${boreholeRows.length} sources using the real telemetry pipeline.`);
+            setStatus(`Completed cohort analytics for ${boreholeRows.length} sources using ${qsMethodLabel}.`);
         } catch (error) {
             setStatus(`Analytics failed: ${error.message}`, true);
         }
@@ -194,7 +280,9 @@
         el("endDate").value = today.toISOString().split("T")[0];
         el("btnRunAnalytics").addEventListener("click", runCohortAnalytics);
         el("btnJsonAnalytics").addEventListener("click", downloadCurrentJson);
-        setStatus("Experimental analytics lab ready. This page remains isolated from the live dashboard.");
+        el("qsMethod")?.addEventListener("change", setQsMethodNote);
+        setQsMethodNote();
+        setStatus("Experimental analytics lab ready. You can optionally filter to a borehole before running the heavier analysis.");
 
         const params = new URLSearchParams(window.location.search);
         if (params.get("provider")) {
@@ -202,6 +290,13 @@
         }
         if (params.get("maxSources")) {
             el("maxSources").value = params.get("maxSources");
+        }
+        if (params.get("qsMethod")) {
+            el("qsMethod").value = params.get("qsMethod");
+            setQsMethodNote();
+        }
+        if (params.get("borehole")) {
+            el("boreholeFilter").value = params.get("borehole");
         }
         if (params.get("autorun") === "1") {
             runCohortAnalytics();

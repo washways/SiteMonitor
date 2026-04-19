@@ -29,6 +29,21 @@
         return [...new Set((flags || []).filter(Boolean).map(String))];
     }
 
+    function getSpecificCapacityForMethod(row = {}, requestedMethod = "preferred") {
+        const candidates = row?.specific_capacity_candidates || {};
+        const preferredMethod = row?.preferred_specific_capacity_method || "current_proxy";
+        const selectedMethod = requestedMethod === "preferred" ? preferredMethod : requestedMethod;
+        const directValue = candidates[selectedMethod];
+        if (Number.isFinite(Number(directValue))) {
+            return { method: selectedMethod, value: Number(directValue) };
+        }
+        const fallbackValue = Number(row?.preferred_specific_capacity_m3h_per_m ?? row?.specific_capacity_m3h_per_m);
+        return {
+            method: preferredMethod,
+            value: Number.isFinite(fallbackValue) ? fallbackValue : null
+        };
+    }
+
     function utcDayKey(value) {
         const ms = Number(value);
         return Number.isFinite(ms) ? new Date(ms).toISOString().slice(0, 10) : "";
@@ -105,19 +120,22 @@
         const highDrawdownThresholdM = Number.isFinite(Number(options.highDrawdownThresholdM)) ? Number(options.highDrawdownThresholdM) : 2;
         const lowSpecificCapacityThreshold = Number.isFinite(Number(options.lowSpecificCapacityThreshold)) ? Number(options.lowSpecificCapacityThreshold) : 0.25;
         const weakRecoveryHoursThreshold = Number.isFinite(Number(options.weakRecoveryHoursThreshold)) ? Number(options.weakRecoveryHoursThreshold) : 8;
+        const qsMethod = String(options.qsMethod || "preferred");
 
         return eventRows.map((row, index) => {
             const eventState = completedEvents[index] || {};
             const recovery = computeRecoveryTimeHours(levelPoints, eventState, options);
+            const selectedQs = getSpecificCapacityForMethod(row, qsMethod);
             const flags = uniqueFlags([...(row.quality_flags || []), ...(recovery.flags || [])]);
             const stressReasons = [];
             const drawdown = Number(row.maximum_drawdown_m ?? row.drawdown_m);
-            const specificCapacity = Number(row.specific_capacity_m3h_per_m);
+            const specificCapacity = Number(selectedQs.value);
 
             if (drawdown >= highDrawdownThresholdM) stressReasons.push("high_drawdown_event");
             if (Number.isFinite(specificCapacity) && specificCapacity <= lowSpecificCapacityThreshold) stressReasons.push("low_specific_capacity_event");
             if (Number.isFinite(recovery.recovery_time_h) && recovery.recovery_time_h >= weakRecoveryHoursThreshold) stressReasons.push("slow_recovery_event");
             if ((recovery.flags || []).includes("recovery_not_observed_within_window")) stressReasons.push("recovery_not_observed");
+            if ((row.flow_behavior_profile || "") === "short_burst") stressReasons.push("short_burst_profile");
             if (flags.some((flag) => ["invalid_specific_capacity", "insufficient_water_level", "event_contains_gap", "sparse_event_signal"].includes(flag))) {
                 stressReasons.push("quality_limited_event");
             }
@@ -125,6 +143,10 @@
             return {
                 ...row,
                 date: String(row.event_start || "").slice(0, 10),
+                active_qs_method: selectedQs.method,
+                selected_specific_capacity_method: selectedQs.method,
+                selected_specific_capacity_m3h_per_m: round(selectedQs.value),
+                event_profile: row.flow_behavior_profile || "unclassified",
                 recovery_time_h: recovery.recovery_time_h,
                 stress_event: stressReasons.length > 0,
                 stress_reasons: uniqueFlags(stressReasons),
@@ -175,6 +197,11 @@
                 stress_event_count: 0,
                 recovery_weakness_count: 0,
                 valid_specific_capacity_event_count: 0,
+                daily_max_flow_m3h: null,
+                median_event_flow_m3h: null,
+                stable_tail_event_count: 0,
+                short_burst_event_count: 0,
+                active_qs_method: null,
                 flow_observation_count: 0,
                 level_observation_count: 0,
                 downtime_indicator: 0,
@@ -195,9 +222,10 @@
         const flowThreshold = Number.isFinite(Number(options.flowThreshold))
             ? Number(options.flowThreshold)
             : Number(report?.detected?.flow_threshold || 0.1);
+        const qsMethod = String(options.qsMethod || "preferred");
         const defaultIntervalMs = typicalIntervalMs(flowPoints);
         const dayMap = new Map();
-        const eventDetails = buildEventDetailRows(report, options);
+        const eventDetails = buildEventDetailRows(report, { ...options, qsMethod });
 
         [...flowPoints, ...levelPoints].forEach((point) => {
             const date = utcDayKey(point.timestamp_ms);
@@ -249,11 +277,19 @@
                     .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
                     .map(Number);
                 const specificCapacities = row._eventDetails
-                    .map((detail) => detail.specific_capacity_m3h_per_m)
+                    .map((detail) => detail.selected_specific_capacity_m3h_per_m)
                     .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
                     .map(Number);
                 const recoveries = row._eventDetails
                     .map((detail) => detail.recovery_time_h)
+                    .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+                    .map(Number);
+                const eventFlows = row._eventDetails
+                    .map((detail) => detail.median_positive_flow_m3h)
+                    .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
+                    .map(Number);
+                const maxFlows = row._eventDetails
+                    .map((detail) => detail.max_flow_m3h)
                     .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
                     .map(Number);
                 const restEstimate = estimateRestingLevel(levelPoints, flowPoints, row.date, flowThreshold, options);
@@ -264,8 +300,13 @@
                 row.worst_specific_capacity_m3h_per_m = round(specificCapacities.length ? Math.min(...specificCapacities) : null);
                 row.valid_specific_capacity_event_count = specificCapacities.length;
                 row.median_recovery_time_h = round(median(recoveries), 2);
+                row.daily_max_flow_m3h = round(maxFlows.length ? Math.max(...maxFlows) : null);
+                row.median_event_flow_m3h = round(median(eventFlows));
                 row.stress_event_count = row._eventDetails.filter((detail) => detail.stress_event).length;
                 row.recovery_weakness_count = row._eventDetails.filter((detail) => (detail.stress_reasons || []).includes("slow_recovery_event") || (detail.stress_reasons || []).includes("recovery_not_observed")).length;
+                row.stable_tail_event_count = row._eventDetails.filter((detail) => detail.has_stable_tail_support).length;
+                row.short_burst_event_count = row._eventDetails.filter((detail) => detail.event_profile === "short_burst").length;
+                row.active_qs_method = row._eventDetails.find((detail) => detail.selected_specific_capacity_method)?.selected_specific_capacity_method || qsMethod;
                 row.estimated_daily_resting_level_m = restEstimate.estimated_daily_resting_level_m;
                 row.downtime_indicator = row.flow_observation_count > 0 && row.daily_pumped_volume_m3 <= 0 ? 1 : 0;
 
