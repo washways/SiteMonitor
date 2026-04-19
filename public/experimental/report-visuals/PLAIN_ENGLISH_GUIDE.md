@@ -66,7 +66,9 @@ It helps answer:
 - which boreholes have stable or unstable Q/S estimates
 - whether the chosen method is close to the other candidates
 
-The page is now intentionally simple: one list of all loaded sites with separate columns for each method. Hover over the column headings for a plain-language explanation.
+The page is now intentionally simple: a small visual summary plus one list of all loaded sites with separate columns for each method. Hover over the column headings for a plain-language explanation.
+
+Only the current review pages are kept in the final workflow so older prototype pages do not clutter the navigation.
 
 ### Field review board
 Use this when planning follow-up work.

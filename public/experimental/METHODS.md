@@ -47,8 +47,10 @@ The hidden pages also have distinct roles:
 - network overview = whole-network scan
 - borehole detail = single-site investigation with a simple readable summary list
 - cross-site comparison = side-by-side ranking and comparison
-- Q/S method comparison = one simple all-site method table for cross-checking Q/S values
+- Q/S method comparison = a compact visual summary plus one all-site method table for cross-checking Q/S values
 - field review board = practical action shortlist
+
+The older prototype lab pages have been removed from the retained workflow so the review set now stays focused on these current pages only.
 
 ---
 

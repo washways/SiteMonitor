@@ -27,9 +27,13 @@ The visualization layer uses the current report schema, including:
 
 ## Pages
 
+The current retained review pages are:
+
 - network-overview.html
 - borehole-detail.html
 - cross-site-comparison.html
+- qs-method-comparison.html
+- field-review-board.html
 
 ## Isolation review
 
@@ -50,5 +54,7 @@ These pages now support a direct live workflow:
 - move between pages while reusing the current cohort report from browser storage
 
 Optional saved-report loading is still available for review, but it is no longer required.
+
+Older prototype pages were removed so this layer now focuses only on the current shared review workflow.
 
 The visual layer is for review only until explicitly promoted.

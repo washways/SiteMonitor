@@ -8,11 +8,11 @@ They are published in the repository for transparency and documentation, but the
 
 ## Hidden review pages covered by this documentation
 
-- [telemetry-lab.html](telemetry-lab.html) — single-source telemetry and pumping-event review
-- [analytics-lab.html](analytics-lab.html) — cohort analytics tables and interpretation outputs
 - [report-visuals/network-overview.html](report-visuals/network-overview.html) — network-level review visuals
 - [report-visuals/borehole-detail.html](report-visuals/borehole-detail.html) — borehole-level detail review
 - [report-visuals/cross-site-comparison.html](report-visuals/cross-site-comparison.html) — cross-site exploratory comparison
+- [report-visuals/qs-method-comparison.html](report-visuals/qs-method-comparison.html) — Q/S visual and table comparison across all retained sites
+- [report-visuals/field-review-board.html](report-visuals/field-review-board.html) — practical field follow-up shortlist
 
 ## Main documentation files
 

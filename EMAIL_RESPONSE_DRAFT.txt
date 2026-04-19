@@ -1,0 +1,27 @@
+Subject: Updated borehole review pages and links
+
+Hello,
+
+The experimental borehole review pages have now been streamlined and improved.
+
+Key updates:
+- older prototype pages have been removed
+- the remaining review pages share one default DCP Malawi 14-day analysis
+- the borehole detail page now uses a simpler summary layout
+- the Q/S method page now includes both a visual summary and a side-by-side method table
+- the field review board remains available for practical follow-up planning
+
+Current review pages
+
+Page | Link | Purpose
+Network overview | https://washways.org/SiteMonitor/experimental/report-visuals/network-overview.html | Whole-network review and triage
+Borehole detail | https://washways.org/SiteMonitor/experimental/report-visuals/borehole-detail.html | Single-site interpretation and supporting detail
+Cross-site comparison | https://washways.org/SiteMonitor/experimental/report-visuals/cross-site-comparison.html | Compare standout boreholes across the cohort
+Q/S method comparison | https://washways.org/SiteMonitor/experimental/report-visuals/qs-method-comparison.html | Visual plus table view of the Q/S methods across all loaded sites
+Field review board | https://washways.org/SiteMonitor/experimental/report-visuals/field-review-board.html | Practical shortlist for site visits and checks
+
+Supporting links
+Methods | https://github.com/washways/SiteMonitor/blob/main/public/experimental/METHODS.md
+Plain-language guide | https://github.com/washways/SiteMonitor/blob/main/public/experimental/report-visuals/PLAIN_ENGLISH_GUIDE.md
+
+Best regards

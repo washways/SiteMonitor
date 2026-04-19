@@ -38,7 +38,7 @@ The hidden experimental review pages now open with the same standard starting po
 
 This default is used because it provides the most practical higher-confidence operational review lane before users switch to advanced options.
 
-The dedicated SonSetLink screening page has now been retired from the main flow to keep the review workflow clearer. SonSetLink can still be loaded through the advanced provider option on the remaining experimental pages when needed.
+The older prototype review pages have now been removed so the workflow stays focused on the current page set only. SonSetLink can still be loaded through the advanced provider option on the remaining experimental pages when needed.
 
 ### Which page should I use?
 
@@ -47,7 +47,7 @@ The dedicated SonSetLink screening page has now been retired from the main flow 
 | **Network overview** | Start here for a whole-network view of status, stress, and maintenance priority |
 | **Borehole detail** | Use for one-borehole investigation with a simple summary list, charts, reasons, and uncertainty |
 | **Cross-site comparison** | Compare boreholes side by side to see which sites stand out |
-| **Q/S method comparison** | View one simple all-site table with multiple Q/S method columns side by side |
+| **Q/S method comparison** | View a visual plus table showing all sites and the different Q/S methods side by side |
 | **Field review board** | Build a practical shortlist for site visits and checks |
 
 ---

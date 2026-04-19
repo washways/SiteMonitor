@@ -43,6 +43,15 @@ The pages use the existing report structures, including:
 - Ranked tables expose stress, downtime, decline, unreliability, and best specific capacity separately.
 - Typology and status are always shown as distinct concepts.
 
+### Q/S method comparison
+- A heatmap now shows the different Q/S values by site and method in one compact view.
+- A spread bar chart highlights where the method outputs differ most strongly.
+- The table underneath remains the primary auditable record for exact values.
+
+### Field review board
+- The shortlist view keeps the action-oriented review lane separate from the method-comparison view.
+- It is intended for practical follow-up rather than hydrogeologic interpretation alone.
+
 ## Isolation review
 
 This visualization layer is tightened for safety because:

@@ -58,13 +58,13 @@ The current placement is safe because the experimental files live entirely under
 
 ## Main review pages
 
-Open the hidden review pages directly:
+Only the current retained review pages are kept in the final experimental flow:
 
-- event review page: [public/experimental/telemetry-lab.html](telemetry-lab.html)
-- analytics review page: [public/experimental/analytics-lab.html](analytics-lab.html)
 - network overview page: [public/experimental/report-visuals/network-overview.html](report-visuals/network-overview.html)
 - borehole detail page: [public/experimental/report-visuals/borehole-detail.html](report-visuals/borehole-detail.html)
 - cross-site comparison page: [public/experimental/report-visuals/cross-site-comparison.html](report-visuals/cross-site-comparison.html)
+- Q/S method comparison page: [public/experimental/report-visuals/qs-method-comparison.html](report-visuals/qs-method-comparison.html)
+- field review board page: [public/experimental/report-visuals/field-review-board.html](report-visuals/field-review-board.html)
 - documentation index: [public/experimental/RESEARCH_DOCUMENTATION.md](RESEARCH_DOCUMENTATION.md)
 - methodology reference: [public/experimental/METHODS.md](METHODS.md)
 - plain-English summary: [public/experimental/PLAIN_ENGLISH_SUMMARY.md](PLAIN_ENGLISH_SUMMARY.md)
@@ -174,3 +174,5 @@ These tests cover:
 ## Important note
 
 This experimental module is not yet part of the production workflow. It is a safe review layer only.
+
+Older prototype lab pages were removed so the remaining page set is easier to understand and share.

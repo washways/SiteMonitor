@@ -159,6 +159,61 @@
             </div>`;
     }
 
+    function renderVisuals(rows) {
+        const heatmapTarget = el("qsHeatmapChart");
+        const spreadTarget = el("qsSpreadChart");
+        if (!window.Plotly || !heatmapTarget || !spreadTarget) return;
+
+        const columns = [
+            { label: METHOD_LABELS.preferred, key: "preferred_auto_qs" },
+            { label: METHOD_LABELS.stable_tail_proxy, key: "stable_tail_qs" },
+            { label: METHOD_LABELS.event_median_proxy, key: "event_median_qs" },
+            { label: METHOD_LABELS.current_proxy, key: "current_proxy_qs" },
+            { label: METHOD_LABELS.late_mean_proxy, key: "late_mean_qs" },
+            { label: METHOD_LABELS.max_stress_proxy, key: "max_flow_qs" }
+        ];
+
+        const yLabels = rows.map((row) => row.display_name || row.borehole_id);
+        const zValues = rows.map((row) => columns.map((column) => {
+            const value = row[column.key];
+            return Number.isFinite(Number(value)) ? Number(value) : null;
+        }));
+
+        Plotly.newPlot(heatmapTarget, [{
+            type: "heatmap",
+            x: columns.map((column) => column.label),
+            y: yLabels,
+            z: zValues,
+            colorscale: "YlGnBu",
+            hovertemplate: "%{y}<br>%{x}: %{z:.3f}<extra></extra>",
+            colorbar: { title: "Q/S" }
+        }], {
+            title: "Q/S values by site and method",
+            margin: { t: 50, l: 140, r: 40, b: 70 },
+            height: Math.max(360, rows.length * 28 + 150)
+        }, { responsive: true, displayModeBar: false });
+
+        const spreadRows = rows
+            .filter((row) => Number.isFinite(Number(row.qs_method_spread)))
+            .sort((a, b) => Number(b.qs_method_spread) - Number(a.qs_method_spread))
+            .slice(0, 20)
+            .reverse();
+
+        Plotly.newPlot(spreadTarget, [{
+            type: "bar",
+            orientation: "h",
+            y: spreadRows.map((row) => row.display_name || row.borehole_id),
+            x: spreadRows.map((row) => row.qs_method_spread),
+            marker: { color: "#2563eb" },
+            hovertemplate: "%{y}<br>Method spread: %{x:.3f}<extra></extra>"
+        }], {
+            title: "Sites with the biggest method differences",
+            margin: { t: 50, l: 140, r: 20, b: 50 },
+            height: Math.max(360, spreadRows.length * 24 + 120),
+            xaxis: { title: "Q/S spread" },
+            yaxis: { title: "Site" }
+        }, { responsive: true, displayModeBar: false });
+    }
 
     function renderTable(rows) {
         const helpHeader = (label, description) => `<span title="${Utils.escapeHtml(description)}">${Utils.escapeHtml(label)} ⓘ</span>`;
@@ -220,6 +275,7 @@
             return;
         }
         renderKpis(rows);
+        renderVisuals(rows);
         renderTable(rows);
         Utils.attachExpandButtons();
         const csvButton = el("btnDownloadQsComparisonCsv");
