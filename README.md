@@ -27,6 +27,29 @@ A **static, browser-based dashboard** for monitoring solar-powered and hand-pump
 
 ---
 
+## Hidden Experimental Review Pages
+
+The hidden experimental review pages now open with the same standard starting point:
+
+- all available DCP boreholes in Malawi
+- last 14 days
+- automatic loading spinner while telemetry and calculations are running
+
+This default is used because it provides the most practical higher-confidence operational review lane before users switch to advanced options.
+
+### Which page should I use?
+
+| Page | Main purpose |
+|---------|--------|
+| **Network overview** | Start here for a whole-network view of status, stress, and maintenance priority |
+| **Borehole detail** | Use for one-borehole investigation with charts, reasons, and uncertainty |
+| **Cross-site comparison** | Compare boreholes side by side to see which sites stand out |
+| **Q/S method comparison** | Compare the different Q/S approaches and check method sensitivity |
+| **Field review board** | Build a practical shortlist for site visits and checks |
+| **SonSetLink screening board** | Keep lower-confidence SonSetLink screening separate from the main DCP review lane |
+
+---
+
 ## Architecture
 
 ```

@@ -13,7 +13,8 @@
     function scopedKey(baseKey, provider = "shared") {
         return `${baseKey}.${String(provider || "shared").toLowerCase()}`;
     }
-    const DEFAULT_MAX_SOURCES = 54;
+    const DEFAULT_MAX_SOURCES = null;
+    const MAX_SOURCE_LIMIT = 500;
     const DEFAULT_PROVIDER = "DCP";
     const DEFAULT_LOOKBACK_DAYS = 14;
     const DEFAULT_COUNTRY_SCOPE = "Malawi";
@@ -214,6 +215,13 @@
         return countryText.includes("malawi") || countryText === "unknown" || countryText.includes("mw");
     }
 
+    function normalizeMaxSources(value) {
+        if (value === null || value === undefined || value === "") return null;
+        const parsed = Math.round(Number(value));
+        if (!Number.isFinite(parsed) || parsed <= 0) return null;
+        return Math.min(parsed, MAX_SOURCE_LIMIT);
+    }
+
     function buildDefaultAnalysisSettings() {
         const params = getQueryParams();
         const today = new Date();
@@ -225,7 +233,7 @@
             provider: params.get("provider") || DEFAULT_PROVIDER,
             startDate: params.get("startDate") || Utils.toDateString(start),
             endDate: params.get("endDate") || Utils.toDateString(today),
-            maxSources: Math.min(DEFAULT_MAX_SOURCES, Math.max(Number(params.get("maxSources") || DEFAULT_MAX_SOURCES) || DEFAULT_MAX_SOURCES, DEFAULT_MAX_SOURCES)),
+            maxSources: normalizeMaxSources(params.get("maxSources") || DEFAULT_MAX_SOURCES),
             flowThreshold: Number(params.get("flowThreshold") || saved.flowThreshold || 0.1),
             graceHours: Number(params.get("graceHours") || saved.graceHours || 2),
             qsMethod: params.get("qsMethod") || saved.qsMethod || "preferred",
@@ -239,7 +247,7 @@
         if (byId("analysisProvider")) byId("analysisProvider").value = defaults.provider;
         if (byId("analysisStartDate")) byId("analysisStartDate").value = defaults.startDate;
         if (byId("analysisEndDate")) byId("analysisEndDate").value = defaults.endDate;
-        if (byId("analysisMaxSources")) byId("analysisMaxSources").value = defaults.maxSources;
+        if (byId("analysisMaxSources")) byId("analysisMaxSources").value = defaults.maxSources ?? "";
         if (byId("analysisFlowThreshold")) byId("analysisFlowThreshold").value = defaults.flowThreshold;
         if (byId("analysisGraceHours")) byId("analysisGraceHours").value = defaults.graceHours;
         if (byId("analysisQsMethod")) byId("analysisQsMethod").value = defaults.qsMethod;
@@ -258,7 +266,7 @@
 
         return {
             provider: byId("analysisProvider")?.value || DEFAULT_PROVIDER,
-            maxSources: Math.min(DEFAULT_MAX_SOURCES, Math.max(1, Math.round(Number(byId("analysisMaxSources")?.value || DEFAULT_MAX_SOURCES) || DEFAULT_MAX_SOURCES))),
+            maxSources: normalizeMaxSources(byId("analysisMaxSources")?.value || ""),
             flowThreshold: Number(byId("analysisFlowThreshold")?.value || 0.1),
             graceHours: Number(byId("analysisGraceHours")?.value || 2),
             qsMethod: byId("analysisQsMethod")?.value || "preferred",
@@ -354,7 +362,7 @@
                 run_id: runId,
                 started_at: new Date().toISOString(),
                 provider: settings.provider,
-                requested_max_sources: settings.maxSources
+                requested_max_sources: settings.maxSources || "all_available"
             }, settings.provider);
 
             const allSources = await listSourcesForProvider(settings, { dcp, ssl });
@@ -367,7 +375,7 @@
                     const bTs = Date.parse(b.metadata?.most_recent_tx || b.metadata?.last_seen || 0) || 0;
                     return bTs - aTs;
                 })
-                .slice(0, settings.maxSources);
+                .slice(0, settings.maxSources || filteredSources.length);
 
             if (!selected.length) {
                 throw new Error(filterQuery ? `No Malawi sources matched the borehole filter "${filterQuery}".` : "No Malawi sources were available for the selected provider scope.");
@@ -410,8 +418,8 @@
                 exported_at: new Date().toISOString(),
                 provider: settings.provider,
                 cohort_request: {
-                    requested_max_sources: settings.maxSources,
-                    load_scope: settings.maxSources >= DEFAULT_MAX_SOURCES ? "full_available_cohort" : "limited_subset",
+                    requested_max_sources: settings.maxSources || "all_available",
+                    load_scope: settings.maxSources ? "limited_subset" : "full_available_cohort",
                     provider_scope: settings.provider,
                     country_scope: DEFAULT_COUNTRY_SCOPE
                 },
@@ -436,10 +444,10 @@
                 run_id: runId,
                 completed_at: new Date().toISOString(),
                 provider: settings.provider,
-                requested_max_sources: settings.maxSources,
+                requested_max_sources: settings.maxSources || "all_available",
                 loaded_site_count: boreholeRows.length
             }, settings.provider);
-            const scopeLabel = settings.maxSources >= DEFAULT_MAX_SOURCES ? `full ${DEFAULT_COUNTRY_SCOPE} cohort` : `${settings.maxSources}-source ${DEFAULT_COUNTRY_SCOPE} subset`;
+            const scopeLabel = settings.maxSources ? `${settings.maxSources}-source ${DEFAULT_COUNTRY_SCOPE} subset` : `all available DCP boreholes in ${DEFAULT_COUNTRY_SCOPE}`;
             setStatus(statusTarget, `Completed ${scopeLabel} analysis for ${boreholeRows.length} sources using ${formatQsMethodLabel(settings.qsMethod)}.`);
             return buildIndex(report);
         } catch (error) {
@@ -450,7 +458,7 @@
                 message,
                 failed_at: new Date().toISOString(),
                 provider: settings.provider,
-                requested_max_sources: settings.maxSources
+                requested_max_sources: settings.maxSources || "all_available"
             }, settings.provider);
             throw new Error(message);
         } finally {

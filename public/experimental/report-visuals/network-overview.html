@@ -12,11 +12,12 @@
         <h1>Experimental Report Visuals — Network Overview</h1>
         <p class="viz-note">Experimental research page only. This view is isolated from the live site and is for methodology review rather than official public reporting.</p>
         <p><a href="network-overview.html">Network overview</a> · <a href="borehole-detail.html">Borehole detail</a> · <a href="cross-site-comparison.html">Cross-site comparison</a> · <a href="qs-method-comparison.html">Q/S method comparison</a> · <a href="field-review-board.html">Field review board</a> · <a href="screening-board.html">SonSetLink screening board</a></p>
+        <div class="callout"><strong>Purpose:</strong> use this page first for a whole-network view of status, stress, priority, and which boreholes need closer review.</div>
     </header>
     <main>
         <section class="panel">
             <h2>Run live cohort analysis</h2>
-            <p class="viz-note">Default starting view: DCP data for Malawi for the last 14 days. This is the faster, higher-confidence routine review view. Open the advanced options only if you need a different provider or tuning.</p>
+            <p class="viz-note">Default starting view: all available DCP boreholes in Malawi for the last 14 days. This is the standard higher-confidence review view. Open the advanced options only if you need a different provider or tuning.</p>
             <div class="filters-grid">
                 <label>Borehole filter<input id="analysisBoreholeFilter" placeholder="Optional name or ID" /></label>
                 <label>Start date<input id="analysisStartDate" type="date" /></label>
@@ -26,7 +27,7 @@
                 <summary>Advanced analysis options</summary>
                 <div class="filters-grid advanced-grid">
                     <label>Provider<select id="analysisProvider"><option value="DCP">DCP (default)</option><option value="SonSetLink">SonSetLink screening</option><option value="all">All providers</option></select></label>
-                    <label>Sources to load<input id="analysisMaxSources" type="number" min="1" max="54" step="1" value="54" /></label>
+                    <label>Sources to load<input id="analysisMaxSources" type="number" min="1" step="1" placeholder="Blank = all available" /></label>
                     <label>Q/S method<select id="analysisQsMethod"><option value="preferred">Preferred auto</option><option value="stable_tail_proxy">Stable-tail median / max drawdown</option><option value="event_median_proxy">Event median / max drawdown</option><option value="current_proxy">Last flow / end drawdown</option><option value="late_mean_proxy">Late mean / max drawdown</option><option value="max_stress_proxy">Max flow / max drawdown</option></select></label>
                     <label>Flow threshold<input id="analysisFlowThreshold" type="number" step="0.01" value="0.1" /></label>
                     <label>Grace hours<input id="analysisGraceHours" type="number" step="0.5" value="2" /></label>

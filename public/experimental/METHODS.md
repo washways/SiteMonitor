@@ -13,6 +13,12 @@ The outputs are intended for:
 - method development
 - cautious hydrogeologic screening
 
+The standard starting workflow on the hidden review pages is now:
+
+- all available DCP boreholes in Malawi
+- last 14 days
+- loading spinner shown while telemetry and calculations are running
+
 They are **not** presented as official public reporting, final engineering judgement, or automated operational decision-making.
 
 ---
@@ -34,6 +40,15 @@ The current experimental analytics flow is deliberately staged so that every tra
 11. Q/S method comparison board for cross-checking candidate approaches site by site
 
 This staged design is important because it keeps the calculations auditable and allows later reviewers to inspect where a value came from.
+
+The hidden pages also have distinct roles:
+
+- network overview = whole-network scan
+- borehole detail = single-site investigation
+- cross-site comparison = side-by-side ranking and comparison
+- Q/S method comparison = method cross-checking
+- field review board = practical action shortlist
+- SonSetLink screening board = separate lower-confidence screening lane
 
 ---
 

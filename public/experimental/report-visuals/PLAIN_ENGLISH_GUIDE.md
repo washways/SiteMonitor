@@ -11,7 +11,7 @@ It is not meant to replace field judgement.
 
 You do not need to upload data first. Each page can run a fresh cohort analysis directly from the telemetry pipeline.
 
-By default, the hidden review pages start with DCP data for Malawi over the last 14 days. This is used as the standard opening view because it is the faster and higher-confidence routine review lane.
+By default, the hidden review pages start with all available DCP boreholes in Malawi over the last 14 days. This is used as the standard opening view because it is the higher-confidence routine review lane.
 
 ---
 
