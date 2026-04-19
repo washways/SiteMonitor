@@ -34,6 +34,7 @@ The hidden experimental review pages now open with the same standard starting po
 - all available DCP boreholes in Malawi
 - last 14 days
 - automatic loading spinner while telemetry and calculations are running
+- one shared report cache reused across all experimental pages after the first run
 
 This default is used because it provides the most practical higher-confidence operational review lane before users switch to advanced options.
 

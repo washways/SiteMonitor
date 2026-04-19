@@ -33,11 +33,8 @@
             target.innerHTML = `<option value="">${placeholder}</option>` + Utils.unique(values).sort().map((value) => `<option value="${Utils.escapeHtml(value)}">${Utils.escapeHtml(value)}</option>`).join("");
         };
 
-        addOptions(el("filterProvider"), rows.map((row) => row.provider), "All providers");
         addOptions(el("filterBorehole"), rows.map((row) => Utils.boreholeKey(row)), "All boreholes");
         addOptions(el("filterStatus"), rows.map((row) => row.status_category), "All status categories");
-        addOptions(el("filterReadiness"), rows.map((row) => row.analysis_readiness_tier), "All readiness tiers");
-        addOptions(el("filterPriority"), rows.map((row) => row.maintenance_priority_label), "All priorities");
     }
 
     function buildComparisonRows(filtered) {
@@ -117,52 +114,6 @@
             </div>`;
     }
 
-    function renderDistributionChart(rows) {
-        const traces = METHOD_ORDER.map((method) => {
-            const keyMap = {
-                preferred: "preferred_auto_qs",
-                stable_tail_proxy: "stable_tail_qs",
-                event_median_proxy: "event_median_qs",
-                current_proxy: "current_proxy_qs",
-                late_mean_proxy: "late_mean_qs",
-                max_stress_proxy: "max_flow_qs"
-            };
-            return {
-                type: "box",
-                name: METHOD_LABELS[method],
-                y: rows.map((row) => row[keyMap[method]]).filter((value) => Number.isFinite(Number(value))),
-                boxpoints: "outliers"
-            };
-        });
-        Plotly.newPlot(el("qsDistributionChart"), traces, {
-            title: "Q/S distribution by method across loaded sites",
-            margin: { t: 45, l: 55, r: 20, b: 70 },
-            yaxis: { title: "Median Q/S" }
-        }, { responsive: true, displayModeBar: false });
-    }
-
-    function renderHeatmap(rows) {
-        const topRows = rows.slice(0, 30);
-        const z = [
-            topRows.map((row) => row.preferred_auto_qs),
-            topRows.map((row) => row.stable_tail_qs),
-            topRows.map((row) => row.event_median_qs),
-            topRows.map((row) => row.current_proxy_qs),
-            topRows.map((row) => row.late_mean_qs),
-            topRows.map((row) => row.max_flow_qs)
-        ];
-        Plotly.newPlot(el("qsHeatmapChart"), [{
-            type: "heatmap",
-            z,
-            x: topRows.map((row) => row.display_name || row.borehole_id),
-            y: ["Preferred auto", "Stable-tail", "Event median", "Last flow", "Late mean", "Max flow"],
-            colorscale: "Viridis",
-            hovertemplate: "%{y}<br>%{x}: %{z}<extra></extra>"
-        }], {
-            title: "Per-site Q/S method heatmap",
-            margin: { t: 45, l: 100, r: 20, b: 120 }
-        }, { responsive: true, displayModeBar: false });
-    }
 
     function renderTable(rows) {
         const html = `
@@ -223,8 +174,6 @@
             return;
         }
         renderKpis(rows);
-        renderDistributionChart(rows);
-        renderHeatmap(rows);
         renderTable(rows);
         Utils.attachExpandButtons();
         el("btnDownloadQsComparisonCsv")?.onclick = () => downloadComparisonCsv(rows);

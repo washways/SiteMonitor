@@ -18,6 +18,7 @@ The standard starting workflow on the hidden review pages is now:
 - all available DCP boreholes in Malawi
 - last 14 days
 - loading spinner shown while telemetry and calculations are running
+- shared cached report reused across all the experimental review pages once loaded
 
 They are **not** presented as official public reporting, final engineering judgement, or automated operational decision-making.
 

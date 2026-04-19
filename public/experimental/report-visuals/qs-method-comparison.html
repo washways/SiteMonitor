@@ -17,7 +17,7 @@
     <main>
         <section class="panel">
             <h2>Run live cohort analysis</h2>
-            <p class="viz-note">Default starting view: all available DCP boreholes in Malawi for the last 14 days. This is the standard higher-confidence review view. Open the advanced options only if you need a different provider or tuning.</p>
+            <p class="viz-note">Default starting view: all available DCP boreholes in Malawi for the last 14 days. This is the standard higher-confidence review view. Once loaded, the same report is reused across the other experimental pages. Open the advanced options only if you need a different provider or tuning.</p>
             <div class="filters-grid">
                 <label>Borehole filter<input id="analysisBoreholeFilter" placeholder="Optional name or ID" /></label>
                 <label>Start date<input id="analysisStartDate" type="date" /></label>
@@ -45,34 +45,18 @@
         </section>
 
         <section class="panel">
-            <h2>Filters</h2>
+            <h2>Simple Q/S comparison table</h2>
+            <p class="viz-note">This page uses the same shared experimental dataset as the other review pages. It is designed as a simple table for all loaded sites, showing the main Q/S method variants side by side.</p>
             <div class="filters-grid">
-                <label>Provider<select id="filterProvider"></select></label>
                 <label>Borehole<select id="filterBorehole"></select></label>
                 <label>Status<select id="filterStatus"></select></label>
-                <label>Readiness tier<select id="filterReadiness"></select></label>
-                <label>Maintenance priority<select id="filterPriority"></select></label>
-                <label><input id="filterActiveOnly" type="checkbox" /> Active only</label>
                 <label><input id="filterValidQsOnly" type="checkbox" /> Valid specific capacity only</label>
             </div>
             <div class="actions">
                 <button id="btnDownloadQsComparisonCsv" class="secondary">Download Q/S comparison CSV</button>
                 <button id="btnDownloadQsComparisonJson" class="secondary">Download full report JSON</button>
             </div>
-        </section>
-
-        <section class="panel">
-            <h2>Q/S comparison summary</h2>
             <div id="qsComparisonKpis"></div>
-        </section>
-
-        <section class="viz-grid">
-            <section class="chart-box"><div id="qsDistributionChart"></div></section>
-            <section class="chart-box"><div id="qsHeatmapChart"></div></section>
-        </section>
-
-        <section class="panel">
-            <h2>Per-site Q/S method table</h2>
             <div id="qsComparisonTable"></div>
         </section>
     </main>

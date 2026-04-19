@@ -9,7 +9,7 @@ It is for:
 
 It is not meant to replace field judgement.
 
-You do not need to upload data first. Each page can run a fresh cohort analysis directly from the telemetry pipeline.
+You do not need to upload data first. The experimental pages share one cached cohort analysis, so once the data are loaded on one page you can switch between the other pages without rerunning.
 
 By default, the hidden review pages start with all available DCP boreholes in Malawi over the last 14 days. This is used as the standard opening view because it is the higher-confidence routine review lane.
 

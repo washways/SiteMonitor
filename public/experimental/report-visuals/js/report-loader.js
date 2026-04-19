@@ -64,7 +64,7 @@
         try {
             if (provider && provider !== "shared") {
                 const scopedRaw = localStorage.getItem(scopedKey(STORAGE_KEY, provider));
-                return scopedRaw ? normalizeReport(JSON.parse(scopedRaw)) : null;
+                if (scopedRaw) return normalizeReport(JSON.parse(scopedRaw));
             }
             const raw = localStorage.getItem(STORAGE_KEY);
             return raw ? normalizeReport(JSON.parse(raw)) : null;
@@ -107,7 +107,7 @@
         try {
             if (provider && provider !== "shared") {
                 const scopedRaw = localStorage.getItem(scopedKey(RUN_STATE_KEY, provider));
-                return scopedRaw ? JSON.parse(scopedRaw) : null;
+                if (scopedRaw) return JSON.parse(scopedRaw);
             }
             const raw = localStorage.getItem(RUN_STATE_KEY);
             return raw ? JSON.parse(raw) : null;
@@ -514,7 +514,7 @@
             const shouldSeedFullCohort = !!(
                 options.runLiveIfMissing
                 && !requestedUrl
-                && (!report || report.cohort_request?.load_scope !== "full_available_cohort")
+                && !report
             );
 
             if (shouldSeedFullCohort) {
@@ -532,7 +532,7 @@
             safeStorageSet(report, requestedProvider);
             const loadedCount = report.network_summary?.site_count || report.health_summary_table?.length || report.borehole_summary_table?.length || 0;
             const sourceMessage = sourceLabel === "browser storage"
-                ? `Loaded cached cohort for ${loadedCount} boreholes from browser storage. Switching pages will reuse this same report.`
+                ? `Loaded cached cohort for ${loadedCount} boreholes from browser storage. All experimental pages will reuse this same report until you rerun the analysis.`
                 : `Loaded report successfully from ${sourceLabel}.`;
             setStatus(statusTarget, sourceMessage);
             return buildIndex(report);
