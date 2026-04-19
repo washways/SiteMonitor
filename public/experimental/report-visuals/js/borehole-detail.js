@@ -55,10 +55,13 @@
                 <div class="kpi-card"><div class="label">Flow profile</div><div class="value">${Utils.escapeHtml(String(row.flow_behavior_profile || "—").replace(/_/g, " "))}</div></div>
                 <div class="kpi-card"><div class="label">Latest resting level</div><div class="value">${Utils.formatNumber(row.latest_resting_level_m, 2)}</div></div>
                 <div class="kpi-card"><div class="label">Latest dynamic level</div><div class="value">${Utils.formatNumber(row.latest_dynamic_level_m, 2)}</div></div>
+                <div class="kpi-card"><div class="label">Evidence confidence</div><div class="value">${Utils.escapeHtml(row.evidence_confidence_label || "—")}</div></div>
+                <div class="kpi-card"><div class="label">Field check focus</div><div class="value">${Utils.escapeHtml(row.field_check_focus || "—")}</div></div>
             </div>
             <div class="callout" style="margin-top:0.75rem;">
                 <p><strong>Interpretation:</strong> ${Utils.escapeHtml(row.concise_interpretation || "No interpretation available.")}</p>
                 <p><strong>Recommended action:</strong> ${Utils.escapeHtml(row.recommended_action || "No action suggested.")}</p>
+                <p><strong>Operational bucket:</strong> ${Utils.escapeHtml(row.operational_bucket || "—")}</p>
                 <p><strong>Transparent reasons:</strong> ${Utils.escapeHtml((row.transparent_reasons || []).join(", ") || "—")}</p>
                 <p><strong>Observed days in current window:</strong> ${dailyRows.length}</p>
                 <p><strong>Possible run-dry candidate share:</strong> ${Utils.formatPercent(row.run_dry_candidate_event_share || 0, 0)}</p>
@@ -291,6 +294,22 @@
         setStatus(`Downloaded ${fileName}.`);
     }
 
+    function downloadCurrentSelectionJson() {
+        const { row, dailyRows, rollingRows } = getCurrentSelectionData();
+        if (!row) {
+            setStatus("No borehole is available for export.", true);
+            return;
+        }
+        const fileName = `${String(row.display_name || row.borehole_id || "borehole").replace(/[^a-z0-9]+/gi, "_").toLowerCase()}_detail.json`;
+        Utils.downloadJson(fileName, {
+            exported_at: new Date().toISOString(),
+            borehole_summary: row,
+            daily_rows: dailyRows,
+            rolling_rows: rollingRows
+        });
+        setStatus(`Downloaded ${fileName}.`);
+    }
+
     function renderAll() {
         const { row, dailyRows, rollingRows } = getCurrentSelectionData();
         if (!row) {
@@ -350,6 +369,7 @@
 
         document.querySelectorAll("input[id^='filter'], select[id^='filter']").forEach((node) => node.addEventListener("change", renderAll));
         el("btnDownloadDetailCsv")?.addEventListener("click", downloadCurrentSelectionCsv);
+        el("btnDownloadDetailJson")?.addEventListener("click", downloadCurrentSelectionJson);
     }
 
     window.addEventListener("DOMContentLoaded", init);

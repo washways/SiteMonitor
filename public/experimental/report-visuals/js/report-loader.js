@@ -460,6 +460,8 @@
             readinessTier: byId("filterReadiness")?.value || "",
             typology: byId("filterTypology")?.value || "",
             priority: byId("filterPriority")?.value || "",
+            evidenceConfidence: byId("filterConfidence")?.value || "",
+            operationalBucket: byId("filterOperationalBucket")?.value || "",
             stressedOnly: !!byId("filterStressedOnly")?.checked,
             activeOnly: !!byId("filterActiveOnly")?.checked,
             validQsOnly: !!byId("filterValidQsOnly")?.checked,
@@ -475,6 +477,8 @@
         if (filters.readinessTier && row.analysis_readiness_tier !== filters.readinessTier) return false;
         if (filters.typology && row.typology_group !== filters.typology) return false;
         if (filters.priority && row.maintenance_priority_label !== filters.priority) return false;
+        if (filters.evidenceConfidence && row.evidence_confidence_label !== filters.evidenceConfidence) return false;
+        if (filters.operationalBucket && row.operational_bucket !== filters.operationalBucket) return false;
         if (filters.stressedOnly && !row.stress_flag && row.status_category !== "stressed" && row.status_category !== "declining_performance") return false;
         if (filters.activeOnly && (Utils.safeNumber(row.active_day_share) || 0) <= 0) return false;
         if (filters.validQsOnly && Utils.safeNumber(row.median_valid_specific_capacity_m3h_per_m) === null) return false;

@@ -102,6 +102,23 @@
         }, { responsive: true, displayModeBar: false });
     }
 
+    function renderConfidenceChart(filtered) {
+        const rows = filtered.healthRows;
+        const labels = Utils.unique(rows.map((row) => row.evidence_confidence_label || "limited evidence support"));
+        const counts = labels.map((label) => rows.filter((row) => (row.evidence_confidence_label || "limited evidence support") === label).length);
+        Plotly.newPlot(el("confidenceChart"), [{
+            type: "bar",
+            x: labels,
+            y: counts,
+            marker: { color: ["#16a34a", "#0284c7", "#f59e0b", "#94a3b8"] }
+        }], {
+            title: "Evidence confidence support",
+            margin: { t: 45, l: 40, r: 20, b: 80 },
+            xaxis: { tickangle: -20 },
+            yaxis: { title: "Sites" }
+        }, { responsive: true, displayModeBar: false });
+    }
+
     function renderPriorityChart(filtered) {
         const rows = [...filtered.priorityRows].sort((a, b) => (b.maintenance_priority_score || 0) - (a.maintenance_priority_score || 0)).slice(0, 12);
         Plotly.newPlot(el("priorityChart"), [{
@@ -203,6 +220,7 @@
                         <th><button data-sort="downtime_proxy_share">Downtime</button></th>
                         <th><button data-sort="latest_resting_level_m">Resting</button></th>
                         <th><button data-sort="latest_dynamic_level_m">Dynamic</button></th>
+                        <th><button data-sort="evidence_confidence_score">Evidence</button></th>
                         <th>Daily sparkline</th>
                         <th>Interpretation</th>
                     </tr>
@@ -221,6 +239,7 @@
                             <td>${Utils.formatPercent(row.downtime_proxy_share, 0)}</td>
                             <td>${Utils.formatNumber(row.latest_resting_level_m, 2)}</td>
                             <td>${Utils.formatNumber(row.latest_dynamic_level_m, 2)}</td>
+                            <td>${Utils.escapeHtml(row.evidence_confidence_label || "—")}</td>
                             <td>${Utils.sparklineSvg(daily.map((item) => item.daily_pumped_volume_m3))}</td>
                             <td>${Utils.escapeHtml(row.concise_interpretation || "—")}</td>
                         </tr>`;
@@ -242,6 +261,17 @@
         });
     }
 
+    function downloadFilteredSummaryCsv() {
+        const filtered = getFiltered();
+        Utils.downloadCsv("network_overview_filtered_summary.csv", filtered.healthRows || []);
+        setStatus(`Downloaded filtered summary for ${filtered.healthRows.length} boreholes.`);
+    }
+
+    function downloadFullReportJson() {
+        Utils.downloadJson("network_overview_report.json", reportIndex?.report || {});
+        setStatus("Downloaded the current report JSON.");
+    }
+
     function renderAll() {
         const filtered = getFiltered();
         if (!filtered.healthRows.length) {
@@ -251,6 +281,7 @@
         renderKpis(filtered);
         renderStatusChart(filtered);
         renderReadinessChart(filtered);
+        renderConfidenceChart(filtered);
         renderPriorityChart(filtered);
         renderBubbleScatter(filtered);
         renderSparklines(filtered);
@@ -304,6 +335,8 @@
         document.querySelectorAll("input[id^='filter'], select[id^='filter']").forEach((node) => {
             node.addEventListener("change", renderAll);
         });
+        el("btnDownloadNetworkCsv")?.addEventListener("click", downloadFilteredSummaryCsv);
+        el("btnDownloadNetworkJson")?.addEventListener("click", downloadFullReportJson);
     }
 
     window.addEventListener("DOMContentLoaded", init);

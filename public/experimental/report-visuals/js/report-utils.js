@@ -65,6 +65,8 @@
         const width = options.width || 120;
         const height = options.height || 28;
         const pad = 2;
+        const stroke = options.stroke || "#2563eb";
+        const dotFill = options.dotFill || stroke;
         const finite = values.map(safeNumber);
         const present = finite.filter((value) => value !== null);
         if (!present.length) {
@@ -83,17 +85,17 @@
         });
 
         let path = "";
-        points.forEach((point, index) => {
+        points.forEach((point) => {
             if (point.y === null) return;
             path += `${path ? " L" : "M"}${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
         });
 
         const circles = points
             .filter((point) => point.y !== null)
-            .map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="1.8" fill="#2563eb"></circle>`)
+            .map((point) => `<circle cx="${point.x.toFixed(1)}" cy="${point.y.toFixed(1)}" r="1.8" fill="${dotFill}"></circle>`)
             .join("");
 
-        return `<svg viewBox="0 0 ${width} ${height}" class="sparkline" aria-hidden="true"><path d="${path}" fill="none" stroke="#2563eb" stroke-width="2"></path>${circles}</svg>`;
+        return `<svg viewBox="0 0 ${width} ${height}" class="sparkline" aria-hidden="true"><path d="${path}" fill="none" stroke="${stroke}" stroke-width="2"></path>${circles}</svg>`;
     }
 
     function statusColor(statusCategory) {
@@ -125,6 +127,18 @@
             ...rows.map((row) => columns.map((column) => escapeCsv(row?.[column])).join(","))
         ].join("\n");
         const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    function downloadJson(filename = "export.json", payload = {}) {
+        const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8;" });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
@@ -204,6 +218,7 @@
         statusColor,
         toDateString,
         downloadCsv,
+        downloadJson,
         attachExpandButtons
     };
 });

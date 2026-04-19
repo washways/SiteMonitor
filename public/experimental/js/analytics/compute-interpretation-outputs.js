@@ -198,6 +198,87 @@
         return "routine monitoring";
     }
 
+    function evidenceConfidenceLabel(score) {
+        if (score >= 80) return "high evidence support";
+        if (score >= 60) return "moderate evidence support";
+        if (score >= 40) return "limited evidence support";
+        return "low evidence support";
+    }
+
+    function computeEvidenceConfidence(row = {}) {
+        let score = 35;
+        const readiness = String(row.analysis_readiness_tier || "D");
+        const telemetryDays = Number(row.telemetry_days_observed) || 0;
+        const validEvents = Number(row.valid_specific_capacity_event_count) || 0;
+        const unreliableIndex = Number(row.data_unreliability_index) || 0;
+        const activeShare = Number(row.active_day_share) || 0;
+        const stableTailShare = Number(row.stable_tail_event_share) || 0;
+
+        if (readiness === "A") score += 28;
+        else if (readiness === "B") score += 20;
+        else if (readiness === "C") score += 10;
+        else score -= 8;
+
+        score += Math.min(14, telemetryDays / 5);
+        score += Math.min(14, validEvents * 1.8);
+        score += Math.min(8, stableTailShare * 12);
+        score += Math.min(6, activeShare * 8);
+        score -= Math.min(18, unreliableIndex * 20);
+        if (row.approximate) score -= 10;
+        if (isEarlyLifeContext(row)) score -= 8;
+
+        score = Math.max(0, Math.min(100, Math.round(score)));
+        return {
+            score,
+            label: evidenceConfidenceLabel(score),
+            basis: `${telemetryDays} telemetry days, ${validEvents} valid Q/S events, readiness ${readiness}`
+        };
+    }
+
+    function determineFieldCheckFocus(row = {}, statusCategory = "") {
+        const unreliableIndex = Number(row.data_unreliability_index) || 0;
+        const runDryShare = Number(row.run_dry_candidate_event_share) || 0;
+        const maxDrawdown = Number(row.max_drawdown_observed_m) || 0;
+        const medianQs = Number(row.median_valid_specific_capacity_m3h_per_m);
+
+        if (statusCategory === "unreliable_or_possible_fault" || unreliableIndex >= 0.8) {
+            return "sensor, power, and communications check";
+        }
+        if (runDryShare >= 0.3 || row.flow_behavior_profile === "possible_intake_limited") {
+            return "pump intake, near-dry, and pump-setting check";
+        }
+        if (statusCategory === "declining_performance" || maxDrawdown >= 3 || (Number.isFinite(medianQs) && medianQs > 0 && medianQs <= 0.5)) {
+            return "yield review and step-test comparison";
+        }
+        if (statusCategory === "high_use_but_stable") {
+            return "operational loading review";
+        }
+        return "routine monitoring only";
+    }
+
+    function determineOperationalBucket(row = {}, statusCategory = "", evidence = {}) {
+        const score = Number(row.maintenance_priority_score) || 0;
+        const confidenceScore = Number(evidence.score) || 0;
+        if (score >= 85 && confidenceScore >= 55) return "urgent field visit";
+        if (score >= 60) return "planned field review";
+        if (["stressed", "high_use_but_stable"].includes(statusCategory)) return "desk review and watch";
+        return "routine watch";
+    }
+
+    function buildActionText(row, statusCategory, definition, evidence, fieldCheckFocus) {
+        const confidenceText = evidence?.label || "limited evidence support";
+        if (statusCategory === "unreliable_or_possible_fault") {
+            return `Check ${fieldCheckFocus} soon. Current interpretation has ${confidenceText}.`;
+        }
+        if (statusCategory === "stressed" || statusCategory === "declining_performance") {
+            return `Plan a field review focused on ${fieldCheckFocus}. Current interpretation has ${confidenceText}.`;
+        }
+        if (statusCategory === "high_use_but_stable") {
+            return `Keep the borehole in service, but review ${fieldCheckFocus} during the next planned visit.`;
+        }
+        return `${definition.suggested_action} Current interpretation has ${confidenceText}.`;
+    }
+
     function buildInterpretationText(row, statusCategory) {
         const label = getCategoryDefinition(statusCategory).status_label;
         const drawdown = Number(row.max_drawdown_observed_m) || 0;
@@ -254,16 +335,23 @@
             const definition = getCategoryDefinition(statusCategory);
             const transparentReasons = determineReasons(row, statusCategory, cohort);
             const maintenancePriorityScore = computePriorityScore(row, statusCategory, cohort);
+            const evidence = computeEvidenceConfidence(row);
+            const fieldCheckFocus = determineFieldCheckFocus(row, statusCategory);
             return {
                 ...row,
                 status_category: statusCategory,
                 status_label: definition.status_label,
                 category_meaning: definition.meaning,
-                recommended_action: definition.suggested_action,
+                recommended_action: buildActionText(row, statusCategory, definition, evidence, fieldCheckFocus),
                 transparent_reasons: transparentReasons,
                 concise_interpretation: buildInterpretationText(row, statusCategory),
                 maintenance_priority_score: maintenancePriorityScore,
-                maintenance_priority_label: priorityLabel(maintenancePriorityScore)
+                maintenance_priority_label: priorityLabel(maintenancePriorityScore),
+                evidence_confidence_score: evidence.score,
+                evidence_confidence_label: evidence.label,
+                evidence_basis_note: evidence.basis,
+                field_check_focus: fieldCheckFocus,
+                operational_bucket: determineOperationalBucket({ ...row, maintenance_priority_score: maintenancePriorityScore }, statusCategory, evidence)
             };
         });
 
@@ -279,8 +367,14 @@
             }));
 
         const categoryCounts = {};
+        const confidenceCounts = {};
+        const reviewFocusCounts = {};
+        const bucketCounts = {};
         healthSummaryTable.forEach((row) => {
             categoryCounts[row.status_category] = (categoryCounts[row.status_category] || 0) + 1;
+            confidenceCounts[row.evidence_confidence_label] = (confidenceCounts[row.evidence_confidence_label] || 0) + 1;
+            reviewFocusCounts[row.field_check_focus] = (reviewFocusCounts[row.field_check_focus] || 0) + 1;
+            bucketCounts[row.operational_bucket] = (bucketCounts[row.operational_bucket] || 0) + 1;
         });
 
         return {
@@ -294,6 +388,15 @@
                 suggested_action: definition.suggested_action
             })).sort((a, b) => b.site_count - a.site_count),
             category_definitions: CATEGORY_DEFINITIONS,
+            confidence_summary_table: Object.entries(confidenceCounts)
+                .map(([evidence_confidence_label, site_count]) => ({ evidence_confidence_label, site_count }))
+                .sort((a, b) => b.site_count - a.site_count),
+            review_focus_summary_table: Object.entries(reviewFocusCounts)
+                .map(([field_check_focus, site_count]) => ({ field_check_focus, site_count }))
+                .sort((a, b) => b.site_count - a.site_count),
+            operational_bucket_summary_table: Object.entries(bucketCounts)
+                .map(([operational_bucket, site_count]) => ({ operational_bucket, site_count }))
+                .sort((a, b) => b.site_count - a.site_count),
             interpretation_note: "Rule-based interpretation only. These categories are operational review aids and are not machine-learning outputs or final diagnoses.",
             cohort_thresholds: cohort,
             network_reference: network?.network_summary || null

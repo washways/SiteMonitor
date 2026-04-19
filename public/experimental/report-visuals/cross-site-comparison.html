@@ -11,12 +11,12 @@
     <header>
         <h1>Experimental Report Visuals — Cross-Site Comparison</h1>
         <p class="viz-note">Experimental research page only. This view is isolated from the live site and is intended for cross-site methodology review rather than official public reporting.</p>
-        <p><a href="network-overview.html">Network overview</a> · <a href="borehole-detail.html">Borehole detail</a> · <a href="cross-site-comparison.html">Cross-site comparison</a></p>
+        <p><a href="network-overview.html">Network overview</a> · <a href="borehole-detail.html">Borehole detail</a> · <a href="cross-site-comparison.html">Cross-site comparison</a> · <a href="field-review-board.html">Field review board</a></p>
     </header>
     <main>
         <section class="panel">
             <h2>Run live cohort analysis</h2>
-            <p class="viz-note">No upload is required. The full current cohort is cached locally and reused across all three pages, so switching views stays fast.</p>
+            <p class="viz-note">No upload is required. The full current cohort is cached locally and reused across all hidden review pages, so switching views stays fast.</p>
             <div class="filters-grid">
                 <label>Provider<select id="analysisProvider"><option value="DCP">DCP</option><option value="SonSetLink">SonSetLink</option></select></label>
                 <label>Borehole filter<input id="analysisBoreholeFilter" placeholder="Optional name or ID" /></label>
@@ -69,6 +69,10 @@
 
         <section class="panel">
             <h2>Ranked tables</h2>
+            <div class="actions">
+                <button id="btnDownloadComparisonCsv" class="secondary">Download comparison CSV</button>
+                <button id="btnDownloadComparisonJson" class="secondary">Download full report JSON</button>
+            </div>
             <div id="rankedTables"></div>
         </section>
     </main>

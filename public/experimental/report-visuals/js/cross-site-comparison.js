@@ -15,7 +15,8 @@
         run_dry_candidate_event_share: "Possible run-dry event share",
         downtime_proxy_share: "Downtime proxy share",
         data_unreliability_index: "Data unreliability index",
-        maintenance_priority_score: "Maintenance priority score"
+        maintenance_priority_score: "Maintenance priority score",
+        evidence_confidence_score: "Evidence confidence score"
     };
 
     function setStatus(message, isError = false) {
@@ -148,16 +149,32 @@
         const byUnreliable = [...filtered.healthRows].sort((a, b) => (b.data_unreliability_index || 0) - (a.data_unreliability_index || 0)).slice(0, 8);
         const byQs = [...filtered.healthRows].sort((a, b) => (b.median_valid_specific_capacity_m3h_per_m || -999) - (a.median_valid_specific_capacity_m3h_per_m || -999)).slice(0, 8);
         const byRunDry = [...filtered.healthRows].sort((a, b) => (b.run_dry_candidate_event_share || 0) - (a.run_dry_candidate_event_share || 0)).slice(0, 8);
+        const byFieldReview = [...filtered.healthRows]
+            .filter((row) => (row.operational_bucket || "") !== "routine watch")
+            .sort((a, b) => ((b.maintenance_priority_score || 0) - (a.maintenance_priority_score || 0)) || ((b.evidence_confidence_score || 0) - (a.evidence_confidence_score || 0)))
+            .slice(0, 8);
 
         el("rankedTables").innerHTML = `
             <div class="viz-grid">
                 ${rankedTable("Stress ranking", byStress, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Rank", key: "rank_most_stressed" }, { label: "Status", value: (row) => row.status_label || row.status_category }])}
+                ${rankedTable("Field review shortlist", byFieldReview, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Bucket", key: "operational_bucket" }, { label: "Focus", key: "field_check_focus" }])}
                 ${rankedTable("Possible run-dry ranking", byRunDry, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Candidate share", value: (row) => Utils.formatPercent(row.run_dry_candidate_event_share, 0) }, { label: "Flow profile", value: (row) => row.flow_behavior_profile || "—" }])}
                 ${rankedTable("Downtime ranking", byDowntime, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Downtime", value: (row) => Utils.formatPercent(row.downtime_proxy_share, 0) }, { label: "Status", value: (row) => row.status_label || row.status_category }])}
                 ${rankedTable("Decline ranking", byDecline, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Priority", key: "maintenance_priority_label" }, { label: "Reasons", value: (row) => (row.transparent_reasons || []).join(", ") }])}
                 ${rankedTable("Unreliability ranking", byUnreliable, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Index", key: "data_unreliability_index" }, { label: "Status", value: (row) => row.status_label || row.status_category }])}
                 ${rankedTable("Best valid specific capacity", byQs, [{ label: "Borehole", value: (row) => row.display_name || row.borehole_id }, { label: "Median Q/S", value: (row) => Utils.safeNumber(row.median_valid_specific_capacity_m3h_per_m) === null ? "No valid Q/S" : Utils.formatNumber(row.median_valid_specific_capacity_m3h_per_m, 3) }, { label: "Status", value: (row) => row.status_label || row.status_category }])}
             </div>`;
+    }
+
+    function downloadComparisonCsv() {
+        const filtered = Loader.applyFilters(reportIndex, Loader.getFilterValues(document));
+        Utils.downloadCsv("cross_site_comparison.csv", filtered.healthRows || []);
+        setStatus(`Downloaded comparison CSV for ${filtered.healthRows.length} boreholes.`);
+    }
+
+    function downloadComparisonJson() {
+        Utils.downloadJson("cross_site_report.json", reportIndex?.report || {});
+        setStatus("Downloaded the current report JSON.");
     }
 
     function renderAll() {
@@ -215,6 +232,8 @@
         });
 
         document.querySelectorAll("input[id^='filter'], select[id^='filter']").forEach((node) => node.addEventListener("change", renderAll));
+        el("btnDownloadComparisonCsv")?.addEventListener("click", downloadComparisonCsv);
+        el("btnDownloadComparisonJson")?.addEventListener("click", downloadComparisonJson);
     }
 
     window.addEventListener("DOMContentLoaded", init);
