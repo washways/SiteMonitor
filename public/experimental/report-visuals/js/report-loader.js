@@ -514,7 +514,7 @@
             const shouldSeedFullCohort = !!(
                 options.runLiveIfMissing
                 && !requestedUrl
-                && !report
+                && (!report || report.cohort_request?.load_scope !== "full_available_cohort")
             );
 
             if (shouldSeedFullCohort) {
