@@ -1,6 +1,19 @@
-# Experimental Telemetry Lab
+# Experimental Research Documentation for Hidden Review Pages
 
 This folder contains the **isolated experimental telemetry and analytics layer** for SiteMonitor.
+
+## Experimental research notice
+
+Everything in this folder is **experimental and research-oriented**.
+
+These hidden pages and supporting documents exist to:
+
+- test hydrogeologic and operational analytics safely
+- review telemetry behaviour before any public promotion
+- document methodology and uncertainty transparently
+- support internal learning, QA, and design decisions
+
+They do **not** represent the official public dashboard workflow or final engineering judgement.
 
 It is intentionally separated from the production dashboard and pulse-report flow.
 
@@ -49,7 +62,13 @@ Open the hidden review pages directly:
 
 - event review page: [public/experimental/telemetry-lab.html](telemetry-lab.html)
 - analytics review page: [public/experimental/analytics-lab.html](analytics-lab.html)
+- network overview page: [public/experimental/report-visuals/network-overview.html](report-visuals/network-overview.html)
+- borehole detail page: [public/experimental/report-visuals/borehole-detail.html](report-visuals/borehole-detail.html)
+- cross-site comparison page: [public/experimental/report-visuals/cross-site-comparison.html](report-visuals/cross-site-comparison.html)
+- documentation index: [public/experimental/RESEARCH_DOCUMENTATION.md](RESEARCH_DOCUMENTATION.md)
+- methodology reference: [public/experimental/METHODS.md](METHODS.md)
 - plain-English summary: [public/experimental/PLAIN_ENGLISH_SUMMARY.md](PLAIN_ENGLISH_SUMMARY.md)
+- report-visual methodology: [public/experimental/report-visuals/METHODS.md](report-visuals/METHODS.md)
 
 ## Folder structure
 

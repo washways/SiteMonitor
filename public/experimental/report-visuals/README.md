@@ -1,8 +1,10 @@
 # Experimental Report Visualizations
 
+## Experimental research notice
+
 This folder contains a **separate visualization layer** for the existing experimental borehole analytics report.
 
-It does **not** modify the live dashboard flow.
+It is intended for research, QA, and methodology review. It does **not** modify the live dashboard flow and should not be treated as official public reporting.
 
 ## Purpose
 

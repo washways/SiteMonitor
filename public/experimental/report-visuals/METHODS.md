@@ -1,5 +1,11 @@
 # Visualization Methods
 
+## Experimental research notice
+
+These visualization pages are experimental research tools.
+
+They sit on top of the hidden analytics outputs and are meant to support review, interpretation, and methodology development. They are not official public reporting pages.
+
 This visualization layer reads the **existing analytics report JSON directly** and adds only a thin transformation layer for charting and filtering.
 
 ## What is reused directly from the report

@@ -1,5 +1,11 @@
 # Plain-English summary of the experimental analytics layer
 
+## Experimental research notice
+
+This material is experimental and research-oriented.
+
+It is intended to explain what the hidden review pages are doing and how their outputs should be interpreted. It should not be read as final public reporting or a definitive engineering diagnosis.
+
 This experimental layer tries to answer practical questions that field teams and reviewers often ask.
 
 ## What the new metrics mean in practice

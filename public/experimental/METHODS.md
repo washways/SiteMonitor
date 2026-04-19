@@ -1,272 +1,420 @@
-# Experimental Telemetry Methods
+# Experimental Research Methods for Hidden Review Pages
 
-This document explains the methods used in the isolated experimental telemetry and analytics layer.
+## Experimental research notice
 
-## 1. Separation of states
+This document describes the methodology used by the hidden experimental review pages in this repository.
 
-The pipeline keeps these states logically separate:
+It is **research-only and experimental**.
 
-1. **Raw source data**
-   - direct adapter fetch results from the upstream API
+The outputs are intended for:
 
-2. **Normalized telemetry**
-   - provider-specific payloads converted into a shared internal schema
+- internal review
+- QA and debugging
+- method development
+- cautious hydrogeologic screening
 
-3. **Cleaned telemetry**
-   - duplicate handling, gap detection, and simple noise adjustment applied
-
-4. **Active event state**
-   - temporary in-memory event assembly while scanning a borehole time series
-
-5. **Completed event outputs**
-   - one finalized output row per event
-
-This separation makes the workflow easier to audit and safer to extend.
+They are **not** presented as official public reporting, final engineering judgement, or automated operational decision-making.
 
 ---
 
-## 2. Normalized telemetry schema
+## 1. Overview of the experimental pipeline
 
-Each telemetry point is normalized into a common structure with:
+The current experimental analytics flow is deliberately staged so that every transformation is inspectable:
+
+1. raw provider fetch
+2. provider normalization into a shared schema
+3. conservative cleaning and QC flagging
+4. pumping-event detection
+5. event-level Q/S and drawdown metrics
+6. daily summaries
+7. trailing 7-day and 30-day summaries
+8. borehole-level summaries
+9. network-level comparisons
+10. interpretation and review labels
+
+This staged design is important because it keeps the calculations auditable and allows later reviewers to inspect where a value came from.
+
+---
+
+## 2. Research scope and confidence lanes
+
+The system currently uses two source lanes:
+
+### DCP
+DCP provides the higher-confidence analytical lane because it typically offers hourly flow and groundwater telemetry that can support event-based calculations.
+
+### SonSetLink
+SonSetLink remains a screening lane. It can contribute useful operational context, but its derived hydrogeologic parameters are more approximate and are flagged accordingly.
+
+Where the code creates approximate or screening values, those flags are intentionally preserved in the outputs.
+
+---
+
+## 3. Shared normalized telemetry schema
+
+All providers are normalized into one internal structure before any analytics begin.
+
+Each point carries:
 
 - source identifier
-- borehole identifier
 - provider name
+- borehole identifier
 - parameter name
 - UTC timestamp
 - numeric timestamp in milliseconds
-- value
+- numeric value
 - unit
-- optional sample span
+- optional sample span in hours
 - quality label
-- quality flags
-- raw reference metadata
+- QC flags
+- raw provenance metadata
 
-For the first build, the normalized parameter set is intentionally narrow:
+For the current experimental build, the main normalized parameters are:
 
 - flow
 - water level above pump
 
-### Source descriptor fields
-
-| Field | Meaning |
-|---|---|
-| source_id | unique source key for the normalized provider and borehole |
-| api_id | adapter or provider ID |
-| provider | DCP or SonSetLink |
-| site_id | provider site identifier |
-| borehole_id | borehole or serial identifier used by the analytics layer |
-| display_name | human-readable label |
-| country | country or location grouping value |
-| lat / lon | optional coordinate values |
-| granularity | expected resolution such as hourly or daily-screening |
-| confidence_class | analytical or screening confidence |
-| metadata | provider-specific metadata retained for traceability |
-
-### Normalized telemetry point fields
-
-| Field | Meaning |
-|---|---|
-| timestamp_utc | canonical UTC timestamp string |
-| timestamp_ms | numeric sortable timestamp |
-| window_start_ms | optional start of the sample window |
-| sample_span_hours | optional duration represented by the point |
-| value | numeric reading after normalization |
-| unit | normalized display unit |
-| quality | observed or derived |
-| flags | QC or provenance tags |
-| raw_ref | pointer to the adapter field of origin |
-| meta | additional derived context such as raw units or daily totals |
+This means the downstream calculations do not rely on vendor-specific fields directly.
 
 ---
 
-## 3. API-specific handling
+## 4. Cleaning and quality control
 
-### DCP
-DCP flow and groundwater-level readings are normalized from hourly time-series records and treated as the higher-confidence analytical source.
+The cleaning layer is intentionally conservative.
 
-### SonSetLink
-SonSetLink usage rows are normalized into approximate flow and level signals:
+It handles:
 
-- daily totals are converted into estimated flow rates
-- slot-array depth values are converted into approximate water-level points
-- derived records are explicitly flagged as approximate
-
-This allows one event engine to process both providers without pretending the sources have the same certainty.
-
----
-
-## 4. Cleaning rules
-
-Cleaning is done per borehole.
-
-The first pass handles:
-
-- sorting by timestamp
+- time sorting
 - duplicate timestamp collapse
-- gap detection based on typical interval
-- simple isolated-noise adjustment for extreme flow spikes or dips
-- negative flow clamping to zero
-- removal of implausible outlier level values
-- missing-parameter flags
-- approximate-source flags
+- gap detection
+- limited noise adjustment for isolated spikes or dips
+- negative-flow clamping to zero where appropriate
+- implausible-value filtering
+- propagation of approximate-source and data-quality flags
 
-The cleaning layer does not destroy the raw inputs. It produces a cleaned bundle and a QC summary.
+The raw telemetry is not overwritten. The cleaned result is a separate analytical state.
 
-### Why this matters for field telemetry
+This is important because field telemetry often contains:
 
-Real field telemetry is often messy. Sensors can:
+- duplicate timestamps
+- missed transmissions
+- transient zeros
+- noisy excursions
+- partial post-event recovery windows
 
-- report duplicate timestamps
-- skip expected intervals
-- send brief negative or zero anomalies
-- produce isolated spikes that do not represent real pumping behavior
-
-The cleaning stage is therefore designed to be conservative: it flags issues, makes small defensible corrections, and keeps uncertainty visible for later interpretation.
+Rather than hiding these issues, the experimental layer tries to keep them visible.
 
 ---
 
-## 5. Pumping-event detection
+## 5. Pumping-event detection methodology
 
-Pumping events are detected from cleaned normalized flow records using:
+Events are detected from cleaned flow telemetry using two main settings:
 
-- a configurable flow threshold
-- a configurable grace period
+- flow threshold
+- grace period in hours
 
-### Grace period logic
-A short pause or brief below-threshold reading does not necessarily close an event immediately. If pumping resumes within the grace window, the event stays open.
+### 5.1 Event start rule
+A pumping event begins when flow rises above the configured flow threshold.
 
-This makes the detector more tolerant of:
+### 5.2 Event continuation rule
+Once an event is open, a brief below-threshold interval does not immediately close it. If pumping resumes within the grace window, the same event continues.
 
-- irregular sampling
-- transient dropouts
-- brief zero-flow interruptions
+### 5.3 Event closure rule
+An event closes when the below-threshold quiet period lasts at least as long as the grace period, or when the review window ends.
 
-### Additional hardening logic
+### 5.4 Event detection flags
+The code marks cautionary cases such as:
 
-The detector also carries event-level caution flags when it sees:
+- sparse event signal
+- event contains gap
+- window ended while event active
 
-- sparse event signals with very few positive samples
-- large gaps inside an event window
-- windows that appear to end before the event naturally closed
+This matters because a poor or truncated event window should not be treated the same as a clean fully observed event.
 
 ---
 
-## 6. Event metrics
+## 6. Event-level Q/S and drawdown calculations
 
-One output row is computed per completed event.
+This is the core methodology for the experimental Q/S values.
 
-The row includes:
+### 6.1 Event duration
+For each completed event:
 
-- borehole ID
-- event start
-- event end
-- duration
-- total pumped volume
+- duration_hours = (event_end_ms - event_start_ms) / 1 hour
+
+### 6.2 Event pumped volume
+The experimental code estimates event volume from all positive-flow points in the event.
+
+If a point already carries an explicit sample span, the code uses:
+
+- contribution = flow × sample_span_hours
+
+Otherwise it uses the time to the next point, capped by a default hourly interval, so that:
+
+- contribution = flow × inferred_hours_until_next_sample
+
+Then:
+
+- total_pumped_volume_m3 = sum of all event point contributions
+
+### 6.3 Start level, end level, and deepest level
+The code searches for the nearest groundwater-level observations around the event timeline and stores:
+
 - groundwater level at event start
 - groundwater level at last valid non-zero flow
-- drawdown
-- last valid non-zero flow
-- specific capacity
-- deepest level reached
-- maximum drawdown
-- quality flags
+- deepest level reached during the event
 
-### Specific capacity
-The experimental calculation uses:
+### 6.4 Drawdown
+The event drawdown is currently calculated as:
 
-$$
-Q/S = \frac{\text{last valid non-zero flow}}{\text{drawdown}}
-$$
+- drawdown_m = start_level − level_at_last_valid_non_zero_flow
 
-with the usual safeguard that very small or invalid drawdown values are flagged rather than treated as reliable results.
+### 6.5 Maximum drawdown
+A second, stronger event indicator is:
+
+- maximum_drawdown_m = start_level − deepest_level_reached
+
+This captures the deepest response observed during the event, not just the value at the last positive-flow point.
+
+### 6.6 Specific capacity, Q/S
+The implemented event-level formula is:
+
+- specific_capacity_m3h_per_m = last_valid_non_zero_flow_m3h ÷ drawdown_m
+
+but **only** when:
+
+- drawdown is finite
+- drawdown is at least the minimum drawdown threshold
+- the last valid non-zero flow is positive
+
+In the current code, the minimum drawdown guard defaults to 0.05 m.
+
+If drawdown is missing, too small, or otherwise unsuitable, Q/S is set to null and flagged instead of being forced.
+
+### 6.7 Why the Q/S uses the last valid non-zero flow
+The current research implementation uses the last valid positive flow during the event because it is a simple, transparent, event-end proxy that avoids using zero or post-stop values.
+
+This is a research simplification, not a claim that it is the only possible hydrogeologic formulation.
 
 ---
 
-## 7. Quality flags
+## 7. Event quality flags
 
-Quality flags are carried through the event output whenever the engine detects potential issues such as:
+Each event row can carry flags such as:
 
-- missing water level
-- duplicate timestamps
-- timestamp gaps
-- approximate source
-- noisy readings adjusted
-- invalid specific capacity
+- insufficient_water_level
+- invalid_specific_capacity
+- approximate_daily_event
+- event_contains_gap
+- sparse_event_signal
+- window_ended_while_event_active
 
-These flags are intended to preserve interpretability rather than hide uncertainty.
+The purpose of these flags is to preserve uncertainty and prevent over-interpretation.
 
 ---
 
-## 8. Daily, rolling, borehole, and network analytics
+## 8. Daily summary calculations
 
-The next isolated layer builds from the completed event outputs rather than bypassing them.
+Daily summaries are built from both cleaned telemetry and completed event outputs.
 
-### Daily rows
-Daily rows summarize:
+### 8.1 Daily pumped volume
+For each day, the code adds the contribution from every positive-flow point:
 
-- total pumped volume
-- total hours pumped
-- event count
-- median and maximum drawdown
-- median and worst valid specific capacity
-- estimated resting water level
-- downtime and recovery caution notes
+- daily_pumped_volume_m3 = sum(flow × represented_hours)
 
-### Rolling rows
-Rolling rows summarize 7-day and 30-day windows for:
+### 8.2 Total hours pumped
+The same represented spans are also summed as:
 
-- abstraction volume
-- valid specific capacity medians
-- drawdown medians
-- resting-level trend direction
-- stress-event counts
-- downtime day counts
+- total_hours_pumped = sum(represented_hours for positive-flow periods)
 
-### Borehole summaries
-Each borehole summary provides an interpretable review label rather than a black-box score. The current fields include:
+### 8.3 Daily event count
+- event_count = number of completed events assigned to that UTC date
 
-- readiness tier
-- typology group
-- total observed abstraction
-- active-day share
-- valid specific-capacity median
-- maximum observed drawdown
-- downtime and intermittency proxies
-- transparent stress reasons
+### 8.4 Daily drawdown summaries
+From the events on that day, the code computes:
 
-### Network comparison tables
-The network layer ranks sites by simple observable measures such as:
+- maximum_drawdown_m = maximum of event drawdown values
+- median_drawdown_m = median of event drawdown values
+
+### 8.5 Daily specific-capacity summaries
+From valid event Q/S values on that day, the code computes:
+
+- median_specific_capacity_m3h_per_m = median valid Q/S
+- worst_specific_capacity_m3h_per_m = minimum valid Q/S
+- valid_specific_capacity_event_count = count of usable event Q/S values
+
+### 8.6 Estimated daily resting level
+The daily resting level is estimated from groundwater-level points whose nearby flow is absent or below threshold.
+
+The code:
+
+1. finds level points on that day
+2. looks for the nearest flow point within a rest-search window
+3. keeps only points where nearby flow is at or below the threshold
+4. takes the median of those candidate levels
+
+At least three supporting rest points are required by default; otherwise the resting level is set to null and flagged.
+
+### 8.7 Daily downtime proxy
+A day is marked with a downtime proxy when:
+
+- flow observations exist, but
+- the daily pumped volume is zero or effectively zero
+
+This is a useful operational proxy, but it is **not** proof of mechanical failure.
+
+---
+
+## 9. Recovery-time calculation
+
+For each event, the code searches the post-event groundwater-level points within a fixed recovery window.
+
+The event is considered recovered when the water level returns to within a small tolerance of the event start level.
+
+So, in words:
+
+- recovery_time_h = time from event end until the first post-event level that is sufficiently close to the start level
+
+If recovery is not observed within the review window, the value is left null and flagged.
+
+This is why some events carry:
+
+- recovery_not_observed_within_window
+- insufficient_post_event_level_support
+
+---
+
+## 10. Rolling 7-day and 30-day metrics
+
+For each anchor day and borehole, the code computes trailing windows.
+
+### 10.1 Rolling volume
+- rolling_7d_volume_m3 = sum of daily pumped volume over the trailing 7 days
+- rolling_30d_volume_m3 = sum of daily pumped volume over the trailing 30 days
+
+### 10.2 Rolling Q/S medians
+- rolling_7d_specific_capacity_median = median of valid event Q/S values in the trailing 7 days
+- rolling_30d_specific_capacity_median = median of valid event Q/S values in the trailing 30 days
+
+### 10.3 Rolling drawdown medians
+- rolling_7d_drawdown_median = median event drawdown over the trailing 7 days
+- rolling_30d_drawdown_median = median event drawdown over the trailing 30 days
+
+### 10.4 Resting-level trend
+The resting-level trend is estimated using a simple linear trend in metres per day across the trailing daily resting-level series.
+
+This is not a forecast model; it is only a descriptive slope over the chosen window.
+
+### 10.5 Rolling stress and downtime counts
+The code also tracks trailing counts for:
+
+- stress events
+- recovery weakness
+- downtime-proxy days
+
+---
+
+## 11. Borehole summary methodology
+
+The borehole summary condenses the daily and rolling outputs into one row per site.
+
+Key metrics include:
+
+### 11.1 Telemetry coverage percent
+- telemetry_coverage_percent = telemetry_days_observed ÷ review_window_days × 100
+
+### 11.2 Active-day share
+- active_day_share = active_days ÷ review_window_days
+
+### 11.3 Event frequency per week
+- event_frequency_per_week = total_events ÷ (review_window_days ÷ 7)
+
+### 11.4 Intermittency index
+- intermittency_index = total_events ÷ active_days
+
+### 11.5 Data unreliability index
+The code builds a simple combined unreliability proxy from:
+
+- the share of flagged days, plus
+- the share of missing days inside the review window
+
+This value is capped at 1.
+
+### 11.6 Performance decline flag
+The current research logic checks whether recent performance looks weaker than the recent baseline using rolling Q/S and rolling drawdown comparisons.
+
+This is intentionally heuristic and should be interpreted cautiously for new installations with short baselines.
+
+### 11.7 Readiness tiers
+The current readiness tiers are:
+
+- Tier A: at least 20 telemetry days and at least 5 valid Q/S-supporting events
+- Tier B: at least 20 telemetry days and at least 1 detected event
+- Tier C: at least 10 telemetry days
+- Tier D: less support than the above
+
+These tiers are used to communicate analytical support, not borehole quality.
+
+---
+
+## 12. Network comparison methodology
+
+The network layer compares sites using observable quantities rather than black-box scores.
+
+It ranks boreholes by things like:
 
 - observed abstraction volume
-- drawdown severity
+- stress intensity
 - valid specific capacity
-- downtime proxy
-- data reliability limits
+- downtime share
+- data unreliability
 
-DCP remains the main analytical lane. SonSetLink rows remain screening-oriented and are labelled accordingly.
-
----
-
-## 9. Maintainer guidance
-
-If a future maintainer adds another provider, the safe rule is:
-
-1. build a new adapter first
-2. normalize into the common schema second
-3. only then allow the cleaning, detection, and metrics layers to process the new telemetry
-
-No future provider should bypass the normalized telemetry contract.
+This is designed to help reviewers decide where to look next, while still keeping the evidence transparent.
 
 ---
 
-## 10. Intended use of this build
+## 13. Interpretation and maintenance-priority logic
+
+The interpretation layer produces labels such as:
+
+- healthy and stable
+- high-use but stable
+- stressed
+- declining performance
+- unreliable or possible fault
+- insufficient data
+
+These are **research heuristics**, not definitive diagnoses.
+
+The priority labels currently map to approximate review bands such as:
+
+- routine monitoring
+- watch list
+- planned review
+- urgent investigation
+
+The newer logic is intentionally conservative for newly installed wells and short telemetry baselines so that the system does not over-escalate normal early-life behaviour.
+
+---
+
+## 14. Important limitations
+
+1. Q/S values are only as good as the available drawdown support.
+2. Short review windows can exaggerate apparent decline.
+3. Screening-source rows should not be treated the same as full analytical event traces.
+4. Downtime proxies are not the same as confirmed failures.
+5. These pages remain experimental and are best used to guide investigation, not replace it.
+
+---
+
+## 15. Intended use
 
 This build is intended for:
 
-- isolated review
-- method validation
-- synthetic testing
-- adapter and schema proving
+- research
+- internal review
+- QA
+- method development
+- cautious prioritisation for follow-up
 
-It is **not yet** intended to replace or modify the production dashboard workflow.
+It is **not yet** intended to replace the production dashboard workflow.
