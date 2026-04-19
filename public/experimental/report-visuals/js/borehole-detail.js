@@ -41,23 +41,30 @@
 
     function renderHeader(row, dailyRows = []) {
         const latestFlags = Utils.unique(dailyRows.flatMap((item) => item.daily_quality_flags || [])).slice(0, 12);
+        const summaryItems = [
+            ["Provider", row.provider || "Unknown provider"],
+            ["Status", row.status_label || row.status_category || "—"],
+            ["Readiness", row.analysis_readiness_tier || "—"],
+            ["Maintenance priority", row.maintenance_priority_label || "—"],
+            ["Q/S mode", String(row.qs_method_used || "preferred").replace(/_/g, " ")],
+            ["Flow profile", String(row.flow_behavior_profile || "—").replace(/_/g, " ")],
+            ["Latest resting level", Utils.formatNumber(row.latest_resting_level_m, 2)],
+            ["Latest dynamic level", Utils.formatNumber(row.latest_dynamic_level_m, 2)],
+            ["Evidence confidence", row.evidence_confidence_label || "—"],
+            ["Evidence lane", row.evidence_lane_label || "—"],
+            ["Field check focus", row.field_check_focus || "—"]
+        ];
+
         el("detailHeader").innerHTML = `
-            <div class="kpi-grid">
-                <div class="kpi-card">
-                    <div class="label">Borehole</div>
-                    <div class="value">${Utils.escapeHtml(row.display_name || row.borehole_id)}</div>
-                    <div class="viz-note">${Utils.escapeHtml(row.provider || "Unknown provider")}</div>
-                </div>
-                <div class="kpi-card"><div class="label">Status</div><div class="value">${Utils.escapeHtml(row.status_label || row.status_category || "—")}</div></div>
-                <div class="kpi-card"><div class="label">Readiness</div><div class="value">${Utils.escapeHtml(row.analysis_readiness_tier || "—")}</div></div>
-                <div class="kpi-card"><div class="label">Maintenance priority</div><div class="value">${Utils.escapeHtml(row.maintenance_priority_label || "—")}</div></div>
-                <div class="kpi-card"><div class="label">Q/S mode</div><div class="value">${Utils.escapeHtml(String(row.qs_method_used || "preferred").replace(/_/g, " "))}</div></div>
-                <div class="kpi-card"><div class="label">Flow profile</div><div class="value">${Utils.escapeHtml(String(row.flow_behavior_profile || "—").replace(/_/g, " "))}</div></div>
-                <div class="kpi-card"><div class="label">Latest resting level</div><div class="value">${Utils.formatNumber(row.latest_resting_level_m, 2)}</div></div>
-                <div class="kpi-card"><div class="label">Latest dynamic level</div><div class="value">${Utils.formatNumber(row.latest_dynamic_level_m, 2)}</div></div>
-                <div class="kpi-card"><div class="label">Evidence confidence</div><div class="value">${Utils.escapeHtml(row.evidence_confidence_label || "—")}</div></div>
-                <div class="kpi-card"><div class="label">Evidence lane</div><div class="value">${Utils.escapeHtml(row.evidence_lane_label || "—")}</div></div>
-                <div class="kpi-card"><div class="label">Field check focus</div><div class="value">${Utils.escapeHtml(row.field_check_focus || "—")}</div></div>
+            <div class="summary-list-card">
+                <h3>${Utils.escapeHtml(row.display_name || row.borehole_id)}</h3>
+                <dl class="summary-list">
+                    ${summaryItems.map(([label, value]) => `
+                        <div class="summary-item">
+                            <dt>${Utils.escapeHtml(String(label))}</dt>
+                            <dd>${Utils.escapeHtml(String(value))}</dd>
+                        </div>`).join("")}
+                </dl>
             </div>
             <div class="callout" style="margin-top:0.75rem;">
                 <p><strong>Interpretation:</strong> ${Utils.escapeHtml(row.concise_interpretation || "No interpretation available.")}</p>

@@ -85,6 +85,41 @@ header .viz-note {
     margin-top: 0.2rem;
 }
 
+.summary-list-card {
+    background: var(--viz-panel);
+    border: 1px solid var(--viz-border);
+    border-radius: 12px;
+    padding: 0.9rem 1rem;
+}
+
+.summary-list-card h3 {
+    margin: 0 0 0.75rem;
+}
+
+.summary-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.2rem 1rem;
+    margin: 0;
+}
+
+.summary-item {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.summary-item dt {
+    color: var(--viz-muted);
+    font-size: 0.88rem;
+    font-weight: 600;
+}
+
+.summary-item dd {
+    margin: 0.15rem 0 0;
+    color: var(--viz-text);
+    font-size: 1rem;
+}
+
 .filters-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -228,6 +263,12 @@ header .callout span {
     font-weight: 700;
     border-radius: 10px;
     min-width: 220px;
+}
+
+.table-help {
+    margin: 0.35rem 0 0.75rem;
+    color: var(--viz-muted);
+    font-size: 0.92rem;
 }
 
 .plot-modal-backdrop {

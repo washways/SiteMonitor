@@ -45,11 +45,10 @@ This staged design is important because it keeps the calculations auditable and 
 The hidden pages also have distinct roles:
 
 - network overview = whole-network scan
-- borehole detail = single-site investigation
+- borehole detail = single-site investigation with a simple readable summary list
 - cross-site comparison = side-by-side ranking and comparison
-- Q/S method comparison = method cross-checking
+- Q/S method comparison = one simple all-site method table for cross-checking Q/S values
 - field review board = practical action shortlist
-- SonSetLink screening board = separate lower-confidence screening lane
 
 ---
 
@@ -62,6 +61,8 @@ DCP provides the higher-confidence analytical lane because it typically offers h
 
 ### SonSetLink
 SonSetLink remains a screening lane. It can contribute useful operational context, but its derived hydrogeologic parameters are more approximate and are flagged accordingly.
+
+To reduce confusion, the separate SonSetLink screening page has been retired from the main workflow. If SonSetLink needs to be reviewed, it can still be loaded from the advanced provider option on the main experimental pages.
 
 Where the code creates approximate or screening values, those flags are intentionally preserved in the outputs.
 

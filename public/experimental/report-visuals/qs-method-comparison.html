@@ -11,8 +11,8 @@
     <header>
         <h1>Experimental Report Visuals — Q/S Method Comparison</h1>
         <p class="viz-note">Experimental research page only. This view compares the different Q/S approaches across the currently loaded sites.</p>
-        <p><a href="network-overview.html">Network overview</a> · <a href="borehole-detail.html">Borehole detail</a> · <a href="cross-site-comparison.html">Cross-site comparison</a> · <a href="qs-method-comparison.html">Q/S method comparison</a> · <a href="field-review-board.html">Field review board</a> · <a href="screening-board.html">SonSetLink screening board</a></p>
-        <div class="callout"><strong>Purpose:</strong> use this page to compare the different Q/S calculation methods and see whether the chosen value looks stable or method-sensitive.</div>
+        <p><a href="network-overview.html">Network overview</a> · <a href="borehole-detail.html">Borehole detail</a> · <a href="cross-site-comparison.html">Cross-site comparison</a> · <a href="qs-method-comparison.html">Q/S method comparison</a> · <a href="field-review-board.html">Field review board</a></p>
+        <div class="callout"><strong>Purpose:</strong> use this page to see one simple list of all loaded sites with the different Q/S method values side by side.</div>
     </header>
     <main>
         <section class="panel">
@@ -48,10 +48,10 @@
             <h2>Simple Q/S comparison table</h2>
             <p class="viz-note">This page uses the same shared experimental dataset as the other review pages. It is designed as a simple table for all loaded sites, showing the main Q/S method variants side by side.</p>
             <div class="filters-grid">
-                <label>Borehole<select id="filterBorehole"></select></label>
                 <label>Status<select id="filterStatus"></select></label>
                 <label><input id="filterValidQsOnly" type="checkbox" /> Valid specific capacity only</label>
             </div>
+            <p class="table-help">Hover over each method heading for a plain-language explanation.</p>
             <div class="actions">
                 <button id="btnDownloadQsComparisonCsv" class="secondary">Download Q/S comparison CSV</button>
                 <button id="btnDownloadQsComparisonJson" class="secondary">Download full report JSON</button>

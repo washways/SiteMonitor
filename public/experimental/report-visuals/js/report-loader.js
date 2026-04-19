@@ -39,6 +39,7 @@
             priority_ranking_table: Array.isArray(report.priority_ranking_table) ? report.priority_ranking_table : [],
             network_comparison_table: Array.isArray(report.network_comparison_table) ? report.network_comparison_table : [],
             category_summary_table: Array.isArray(report.category_summary_table) ? report.category_summary_table : [],
+            event_rows: Array.isArray(report.event_rows) ? report.event_rows : [],
             source_reports: Array.isArray(report.source_reports) ? report.source_reports : []
         };
     }
@@ -384,6 +385,7 @@
             const dailyRows = [];
             const rollingRows = [];
             const boreholeRows = [];
+            const eventRows = [];
             const sourceReports = [];
             const batchSize = filterQuery ? 1 : (settings.provider === "SonSetLink" ? 3 : 4);
 
@@ -402,6 +404,7 @@
                     dailyRows.push(...(result.daily_rows || []));
                     rollingRows.push(...(result.rolling_rows || []));
                     boreholeRows.push(result.borehole_summary);
+                    eventRows.push(...(result.report?.event_rows || []));
                     sourceReports.push(result.report);
                 });
 
@@ -430,6 +433,7 @@
                 analytics_note: `Experimental isolated analytics layer using real normalized telemetry and event outputs for ${DEFAULT_COUNTRY_SCOPE} sites over the last ${DEFAULT_LOOKBACK_DAYS} days by default. Active Q/S mode: ${formatQsMethodLabel(settings.qsMethod)}.`,
                 qs_method_selected: settings.qsMethod,
                 qs_method_label: formatQsMethodLabel(settings.qsMethod),
+                event_rows: eventRows,
                 daily_rows: dailyRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
                 rolling_rows: rollingRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
                 borehole_summary_table: boreholeRows.sort((a, b) => String(a.display_name).localeCompare(String(b.display_name))),
@@ -511,10 +515,13 @@
                 report = safeStorageGet(requestedProvider);
             }
 
+            const reportMissingMethodSupport = !Array.isArray(report?.event_rows)
+                || (!report?.event_rows?.length && (report?.health_summary_table || []).some((row) => (Number(row.active_day_share) || 0) > 0));
+
             const shouldSeedFullCohort = !!(
                 options.runLiveIfMissing
                 && !requestedUrl
-                && (!report || report.cohort_request?.load_scope !== "full_available_cohort")
+                && (!report || report.cohort_request?.load_scope !== "full_available_cohort" || reportMissingMethodSupport)
             );
 
             if (shouldSeedFullCohort) {

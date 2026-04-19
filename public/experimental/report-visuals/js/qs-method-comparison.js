@@ -13,6 +13,15 @@
         late_mean_proxy: "Late mean",
         max_stress_proxy: "Max flow"
     };
+    const METHOD_DESCRIPTIONS = {
+        preferred: "Automatic preferred choice from the available event-based Q/S methods.",
+        stable_tail_proxy: "Late stable pumping flow divided by maximum drawdown. Best when the event tail is well supported.",
+        event_median_proxy: "Median pumping flow during the event divided by maximum drawdown.",
+        current_proxy: "Last non-zero flow near the event end divided by end-of-event drawdown.",
+        late_mean_proxy: "Average late-event flow divided by maximum drawdown.",
+        max_stress_proxy: "Maximum observed event flow divided by maximum observed drawdown. This is the most stress-oriented proxy.",
+        spread: "Difference between the highest and lowest available Q/S method values for that site. Larger spread means lower method agreement."
+    };
     const METHOD_ORDER = ["preferred", "stable_tail_proxy", "event_median_proxy", "current_proxy", "late_mean_proxy", "max_stress_proxy"];
 
     function setStatus(message, isError = false) {
@@ -37,65 +46,101 @@
         addOptions(el("filterStatus"), rows.map((row) => row.status_category), "All status categories");
     }
 
+    function collectEventRows() {
+        const directRows = Array.isArray(reportIndex?.report?.event_rows) ? reportIndex.report.event_rows : [];
+        if (directRows.length) return directRows;
+        return (reportIndex?.report?.source_reports || []).flatMap((sourceReport) => Array.isArray(sourceReport?.event_rows) ? sourceReport.event_rows : []);
+    }
+
     function buildComparisonRows(filtered) {
         const allowedKeys = filtered.allowedKeys || new Set();
-        const healthByKey = new Map((filtered.healthRows || []).map((row) => [Utils.boreholeKey(row), row]));
+        const summaryRows = filtered.healthRows.length ? filtered.healthRows : (reportIndex?.report?.health_summary_table || []);
+        const healthByKey = new Map(summaryRows.map((row) => [Utils.boreholeKey(row), row]));
         const grouped = new Map();
 
-        (reportIndex?.report?.source_reports || []).forEach((sourceReport) => {
-            (sourceReport?.event_rows || []).forEach((eventRow) => {
-                const key = Utils.boreholeKey(eventRow);
-                if (allowedKeys.size && !allowedKeys.has(key)) return;
-                const summary = healthByKey.get(key) || {};
-                if (!grouped.has(key)) {
-                    grouped.set(key, {
-                        key,
-                        provider: eventRow.provider || summary.provider,
-                        borehole_id: eventRow.borehole_id || summary.borehole_id,
-                        display_name: summary.display_name || eventRow.borehole_id,
-                        status_label: summary.status_label || summary.status_category || "—",
-                        maintenance_priority_label: summary.maintenance_priority_label || "—",
-                        valid_event_count: 0,
-                        preferred: [],
-                        stable_tail_proxy: [],
-                        event_median_proxy: [],
-                        current_proxy: [],
-                        late_mean_proxy: [],
-                        max_stress_proxy: []
-                    });
-                }
-                const target = grouped.get(key);
-                if (Number.isFinite(Number(eventRow.preferred_specific_capacity_m3h_per_m))) {
-                    target.preferred.push(Number(eventRow.preferred_specific_capacity_m3h_per_m));
-                }
-                const candidates = eventRow.specific_capacity_candidates || {};
-                METHOD_ORDER.slice(1).forEach((method) => {
-                    if (Number.isFinite(Number(candidates[method]))) {
-                        target[method].push(Number(candidates[method]));
-                    }
-                });
-                if (Number.isFinite(Number(eventRow.selected_specific_capacity_m3h_per_m))) {
-                    target.valid_event_count += 1;
-                }
+        summaryRows.forEach((summary) => {
+            const key = Utils.boreholeKey(summary);
+            if (allowedKeys.size && !allowedKeys.has(key)) return;
+            grouped.set(key, {
+                key,
+                provider: summary.provider,
+                borehole_id: summary.borehole_id,
+                display_name: summary.display_name || summary.borehole_id,
+                status_label: summary.status_label || summary.status_category || "—",
+                maintenance_priority_label: summary.maintenance_priority_label || "—",
+                summary,
+                valid_event_count: 0,
+                preferred: [],
+                stable_tail_proxy: [],
+                event_median_proxy: [],
+                current_proxy: [],
+                late_mean_proxy: [],
+                max_stress_proxy: []
             });
         });
 
+        collectEventRows().forEach((eventRow) => {
+            const key = Utils.boreholeKey(eventRow);
+            if (allowedKeys.size && !allowedKeys.has(key)) return;
+            const summary = healthByKey.get(key) || {};
+            if (!grouped.has(key)) {
+                grouped.set(key, {
+                    key,
+                    provider: eventRow.provider || summary.provider,
+                    borehole_id: eventRow.borehole_id || summary.borehole_id,
+                    display_name: summary.display_name || eventRow.display_name || eventRow.borehole_id,
+                    status_label: summary.status_label || summary.status_category || "—",
+                    maintenance_priority_label: summary.maintenance_priority_label || "—",
+                    summary,
+                    valid_event_count: 0,
+                    preferred: [],
+                    stable_tail_proxy: [],
+                    event_median_proxy: [],
+                    current_proxy: [],
+                    late_mean_proxy: [],
+                    max_stress_proxy: []
+                });
+            }
+            const target = grouped.get(key);
+            if (Number.isFinite(Number(eventRow.preferred_specific_capacity_m3h_per_m))) {
+                target.preferred.push(Number(eventRow.preferred_specific_capacity_m3h_per_m));
+            }
+            const candidates = eventRow.specific_capacity_candidates || {};
+            METHOD_ORDER.slice(1).forEach((method) => {
+                if (Number.isFinite(Number(candidates[method]))) {
+                    target[method].push(Number(candidates[method]));
+                }
+            });
+            if (Number.isFinite(Number(eventRow.selected_specific_capacity_m3h_per_m || eventRow.preferred_specific_capacity_m3h_per_m))) {
+                target.valid_event_count += 1;
+            }
+        });
+
         return [...grouped.values()].map((row) => {
-            const methodValues = METHOD_ORDER.map((method) => median(row[method])).filter((value) => Number.isFinite(Number(value)));
-            const spread = methodValues.length ? Math.max(...methodValues) - Math.min(...methodValues) : null;
+            const summary = row.summary || {};
+            const preferredAuto = median(row.preferred);
+            const stableTail = median(row.stable_tail_proxy);
+            const eventMedian = median(row.event_median_proxy);
+            const current = median(row.current_proxy);
+            const lateMean = median(row.late_mean_proxy);
+            const maxFlow = median(row.max_stress_proxy);
+            const fallbackPreferred = Number.isFinite(Number(summary.median_valid_specific_capacity_m3h_per_m)) ? Number(summary.median_valid_specific_capacity_m3h_per_m) : null;
+            const methodValues = [preferredAuto ?? fallbackPreferred, stableTail, eventMedian, current, lateMean, maxFlow].filter((value) => Number.isFinite(Number(value)));
+            const spread = methodValues.length > 1 ? Math.max(...methodValues) - Math.min(...methodValues) : null;
+            const supportDays = (filtered.dailyRows || []).filter((item) => Utils.boreholeKey(item) === row.key).reduce((sum, item) => sum + (Number(item.event_count) || 0), 0);
             return {
-                provider: row.provider,
-                borehole_id: row.borehole_id,
-                display_name: row.display_name,
-                status_label: row.status_label,
-                maintenance_priority_label: row.maintenance_priority_label,
-                valid_event_count: row.valid_event_count,
-                preferred_auto_qs: median(row.preferred),
-                stable_tail_qs: median(row.stable_tail_proxy),
-                event_median_qs: median(row.event_median_proxy),
-                current_proxy_qs: median(row.current_proxy),
-                late_mean_qs: median(row.late_mean_proxy),
-                max_flow_qs: median(row.max_stress_proxy),
+                provider: row.provider || summary.provider || "—",
+                borehole_id: row.borehole_id || summary.borehole_id,
+                display_name: row.display_name || summary.display_name,
+                status_label: row.status_label || "—",
+                maintenance_priority_label: row.maintenance_priority_label || "—",
+                valid_event_count: row.valid_event_count || supportDays,
+                preferred_auto_qs: preferredAuto ?? fallbackPreferred,
+                stable_tail_qs: stableTail,
+                event_median_qs: eventMedian,
+                current_proxy_qs: current,
+                late_mean_qs: lateMean,
+                max_flow_qs: maxFlow,
                 qs_method_spread: spread
             };
         }).sort((a, b) => String(a.display_name || a.borehole_id).localeCompare(String(b.display_name || b.borehole_id)));
@@ -116,20 +161,21 @@
 
 
     function renderTable(rows) {
+        const helpHeader = (label, description) => `<span title="${Utils.escapeHtml(description)}">${Utils.escapeHtml(label)} ⓘ</span>`;
         const html = `
             <table class="viz-table">
                 <thead>
                     <tr>
                         <th>Borehole</th>
                         <th>Status</th>
-                        <th>Valid events</th>
-                        <th>Preferred auto</th>
-                        <th>Stable-tail</th>
-                        <th>Event median</th>
-                        <th>Last flow</th>
-                        <th>Late mean</th>
-                        <th>Max flow</th>
-                        <th>Spread</th>
+                        <th>Event support</th>
+                        <th>${helpHeader(METHOD_LABELS.preferred, METHOD_DESCRIPTIONS.preferred)}</th>
+                        <th>${helpHeader(METHOD_LABELS.stable_tail_proxy, METHOD_DESCRIPTIONS.stable_tail_proxy)}</th>
+                        <th>${helpHeader(METHOD_LABELS.event_median_proxy, METHOD_DESCRIPTIONS.event_median_proxy)}</th>
+                        <th>${helpHeader(METHOD_LABELS.current_proxy, METHOD_DESCRIPTIONS.current_proxy)}</th>
+                        <th>${helpHeader(METHOD_LABELS.late_mean_proxy, METHOD_DESCRIPTIONS.late_mean_proxy)}</th>
+                        <th>${helpHeader(METHOD_LABELS.max_stress_proxy, METHOD_DESCRIPTIONS.max_stress_proxy)}</th>
+                        <th>${helpHeader("Spread", METHOD_DESCRIPTIONS.spread)}</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -176,8 +222,10 @@
         renderKpis(rows);
         renderTable(rows);
         Utils.attachExpandButtons();
-        el("btnDownloadQsComparisonCsv")?.onclick = () => downloadComparisonCsv(rows);
-        el("btnDownloadQsComparisonJson")?.onclick = () => downloadComparisonJson(rows);
+        const csvButton = el("btnDownloadQsComparisonCsv");
+        const jsonButton = el("btnDownloadQsComparisonJson");
+        if (csvButton) csvButton.onclick = () => downloadComparisonCsv(rows);
+        if (jsonButton) jsonButton.onclick = () => downloadComparisonJson(rows);
         setStatus(`Rendered Q/S comparison for ${rows.length} sites.`);
     }
 

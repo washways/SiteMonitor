@@ -47,6 +47,8 @@ It helps answer:
 - whether the site may be running near dry
 - what action is currently suggested
 
+The top section is now a simple summary list rather than a set of KPI boxes.
+
 ### Cross-site comparison
 Use this when you want to compare sites against each other.
 
@@ -64,6 +66,8 @@ It helps answer:
 - which boreholes have stable or unstable Q/S estimates
 - whether the chosen method is close to the other candidates
 
+The page is now intentionally simple: one list of all loaded sites with separate columns for each method. Hover over the column headings for a plain-language explanation.
+
 ### Field review board
 Use this when planning follow-up work.
 
@@ -71,14 +75,6 @@ It helps answer:
 - which sites need urgent field visits
 - which ones can wait for a planned review
 - what the main field-check focus should be
-
-### SonSetLink screening board
-Use this only for SonSetLink screening-level review.
-
-It helps answer:
-- which SonSetLink sites are active
-- which ones show caution flags
-- which ones deserve follow-up, while keeping in mind that this lane is lower confidence than DCP
 
 ---
 
