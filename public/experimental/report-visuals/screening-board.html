@@ -16,9 +16,9 @@
     <main>
         <section class="panel">
             <h2>Run live screening analysis</h2>
-            <p class="viz-note">This page defaults to SonSetLink and should be used for screening-level operational review only, not direct hydrogeologic comparison against the DCP analytical lane.</p>
+            <p class="viz-note">This page now defaults to all Malawian sites over the last 14 days, and the provider selector can still isolate SonSetLink for screening-only review.</p>
             <div class="filters-grid">
-                <label>Provider<select id="analysisProvider"><option value="DCP">DCP</option><option value="SonSetLink">SonSetLink</option></select></label>
+                <label>Provider<select id="analysisProvider"><option value="all">All providers</option><option value="DCP">DCP</option><option value="SonSetLink">SonSetLink</option></select></label>
                 <label>Borehole filter<input id="analysisBoreholeFilter" placeholder="Optional name or ID" /></label>
                 <label>Start date<input id="analysisStartDate" type="date" /></label>
                 <label>End date<input id="analysisEndDate" type="date" /></label>

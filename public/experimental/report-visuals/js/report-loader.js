@@ -14,6 +14,9 @@
         return `${baseKey}.${String(provider || "shared").toLowerCase()}`;
     }
     const DEFAULT_MAX_SOURCES = 54;
+    const DEFAULT_PROVIDER = "all";
+    const DEFAULT_LOOKBACK_DAYS = 14;
+    const DEFAULT_COUNTRY_SCOPE = "Malawi";
     const QS_METHOD_LABELS = {
         preferred: "Preferred auto",
         stable_tail_proxy: "Stable-tail median / max drawdown",
@@ -155,22 +158,34 @@
         ].filter(Boolean).some((value) => String(value).toLowerCase().includes(query));
     }
 
+    function isMalawiSource(source = {}) {
+        const countryText = [
+            source?.country,
+            source?.metadata?.country,
+            source?.metadata?.location,
+            source?.metadata?.site_name
+        ].filter(Boolean).join(" ").toLowerCase();
+
+        if (!countryText) return true;
+        return countryText.includes("malawi") || countryText === "unknown" || countryText.includes("mw");
+    }
+
     function buildDefaultAnalysisSettings() {
         const params = getQueryParams();
         const today = new Date();
         const start = new Date();
-        start.setDate(today.getDate() - 30);
+        start.setDate(today.getDate() - DEFAULT_LOOKBACK_DAYS);
         const saved = safeSettingsGet() || {};
 
         return {
-            provider: params.get("provider") || saved.provider || "DCP",
-            startDate: params.get("startDate") || saved.startDate || Utils.toDateString(start),
-            endDate: params.get("endDate") || saved.endDate || Utils.toDateString(today),
-            maxSources: Math.min(54, Math.max(Number(params.get("maxSources") || saved.maxSources || DEFAULT_MAX_SOURCES) || DEFAULT_MAX_SOURCES, DEFAULT_MAX_SOURCES)),
+            provider: params.get("provider") || DEFAULT_PROVIDER,
+            startDate: params.get("startDate") || Utils.toDateString(start),
+            endDate: params.get("endDate") || Utils.toDateString(today),
+            maxSources: Math.min(DEFAULT_MAX_SOURCES, Math.max(Number(params.get("maxSources") || DEFAULT_MAX_SOURCES) || DEFAULT_MAX_SOURCES, DEFAULT_MAX_SOURCES)),
             flowThreshold: Number(params.get("flowThreshold") || saved.flowThreshold || 0.1),
             graceHours: Number(params.get("graceHours") || saved.graceHours || 2),
             qsMethod: params.get("qsMethod") || saved.qsMethod || "preferred",
-            boreholeFilter: params.get("borehole") || saved.boreholeFilter || ""
+            boreholeFilter: params.get("borehole") || ""
         };
     }
 
@@ -198,8 +213,8 @@
         }
 
         return {
-            provider: byId("analysisProvider")?.value || "DCP",
-            maxSources: Math.min(54, Math.max(1, Math.round(Number(byId("analysisMaxSources")?.value || 8) || 8))),
+            provider: byId("analysisProvider")?.value || DEFAULT_PROVIDER,
+            maxSources: Math.min(DEFAULT_MAX_SOURCES, Math.max(1, Math.round(Number(byId("analysisMaxSources")?.value || DEFAULT_MAX_SOURCES) || DEFAULT_MAX_SOURCES))),
             flowThreshold: Number(byId("analysisFlowThreshold")?.value || 0.1),
             graceHours: Number(byId("analysisGraceHours")?.value || 2),
             qsMethod: byId("analysisQsMethod")?.value || "preferred",
@@ -263,13 +278,27 @@
         };
     }
 
+    async function listSourcesForProvider(settings, adapters) {
+        const context = { useProxy: true };
+        if (settings.provider === "DCP") {
+            return await adapters.dcp.listSources(context);
+        }
+        if (settings.provider === "SonSetLink") {
+            return await adapters.ssl.listSources(context);
+        }
+        const [dcpSources, sslSources] = await Promise.all([
+            adapters.dcp.listSources(context),
+            adapters.ssl.listSources(context)
+        ]);
+        return [...dcpSources, ...sslSources];
+    }
+
     async function runLiveAnalysis(options = {}) {
         const root = options.root || document;
         const statusTarget = options.statusTarget || null;
         const settings = options.settings || getAnalysisSettings(root);
         const Exp = ensureAnalyticsModulesReady();
         const { dcpAdapter: dcp, sslAdapter: ssl } = getAdapters(Exp);
-        const adapter = settings.provider === "SonSetLink" ? ssl : dcp;
         const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
         try {
@@ -283,9 +312,10 @@
                 requested_max_sources: settings.maxSources
             }, settings.provider);
 
-            const allSources = await adapter.listSources({ useProxy: true });
+            const allSources = await listSourcesForProvider(settings, { dcp, ssl });
+            const malawiSources = allSources.filter((source) => isMalawiSource(source));
             const filterQuery = String(settings.boreholeFilter || "").trim().toLowerCase();
-            const filteredSources = filterQuery ? allSources.filter((source) => matchesBoreholeFilter(source, filterQuery)) : allSources;
+            const filteredSources = filterQuery ? malawiSources.filter((source) => matchesBoreholeFilter(source, filterQuery)) : malawiSources;
             const selected = [...filteredSources]
                 .sort((a, b) => {
                     const aTs = Date.parse(a.metadata?.most_recent_tx || a.metadata?.last_seen || 0) || 0;
@@ -295,7 +325,7 @@
                 .slice(0, settings.maxSources);
 
             if (!selected.length) {
-                throw new Error(filterQuery ? `No sources matched the borehole filter "${filterQuery}".` : "No sources were available for the selected provider.");
+                throw new Error(filterQuery ? `No Malawi sources matched the borehole filter "${filterQuery}".` : "No Malawi sources were available for the selected provider scope.");
             }
 
             const dailyRows = [];
@@ -336,13 +366,15 @@
                 provider: settings.provider,
                 cohort_request: {
                     requested_max_sources: settings.maxSources,
-                    load_scope: settings.maxSources >= DEFAULT_MAX_SOURCES ? "full_available_cohort" : "limited_subset"
+                    load_scope: settings.maxSources >= DEFAULT_MAX_SOURCES ? "full_available_cohort" : "limited_subset",
+                    provider_scope: settings.provider,
+                    country_scope: DEFAULT_COUNTRY_SCOPE
                 },
                 date_window: {
                     start: settings.window.start.toISOString(),
                     end: settings.window.end.toISOString()
                 },
-                analytics_note: `Experimental isolated analytics layer using real normalized telemetry and event outputs. Active Q/S mode: ${formatQsMethodLabel(settings.qsMethod)}.`,
+                analytics_note: `Experimental isolated analytics layer using real normalized telemetry and event outputs for ${DEFAULT_COUNTRY_SCOPE} sites over the last ${DEFAULT_LOOKBACK_DAYS} days by default. Active Q/S mode: ${formatQsMethodLabel(settings.qsMethod)}.`,
                 qs_method_selected: settings.qsMethod,
                 qs_method_label: formatQsMethodLabel(settings.qsMethod),
                 daily_rows: dailyRows.sort((a, b) => `${a.borehole_id}|${a.date}`.localeCompare(`${b.borehole_id}|${b.date}`)),
@@ -362,7 +394,7 @@
                 requested_max_sources: settings.maxSources,
                 loaded_site_count: boreholeRows.length
             }, settings.provider);
-            const scopeLabel = settings.maxSources >= DEFAULT_MAX_SOURCES ? "full available cohort" : `${settings.maxSources}-source cohort`;
+            const scopeLabel = settings.maxSources >= DEFAULT_MAX_SOURCES ? `full ${DEFAULT_COUNTRY_SCOPE} cohort` : `${settings.maxSources}-source ${DEFAULT_COUNTRY_SCOPE} subset`;
             setStatus(statusTarget, `Completed ${scopeLabel} analysis for ${boreholeRows.length} sources using ${formatQsMethodLabel(settings.qsMethod)}.`);
             return buildIndex(report);
         } catch (error) {
@@ -407,7 +439,7 @@
     async function loadReport(options = {}) {
         const statusTarget = options.statusTarget || null;
         const requestedUrl = options.url || getQueryReportUrl() || options.defaultUrl || "";
-        const requestedProvider = options.provider || options.root?.getElementById?.("analysisProvider")?.value || buildDefaultAnalysisSettings().provider || "DCP";
+        const requestedProvider = options.provider || options.root?.getElementById?.("analysisProvider")?.value || buildDefaultAnalysisSettings().provider || DEFAULT_PROVIDER;
 
         try {
             setStatus(statusTarget, "Loading report data...");
