@@ -56,6 +56,7 @@
                 <div class="kpi-card"><div class="label">Latest resting level</div><div class="value">${Utils.formatNumber(row.latest_resting_level_m, 2)}</div></div>
                 <div class="kpi-card"><div class="label">Latest dynamic level</div><div class="value">${Utils.formatNumber(row.latest_dynamic_level_m, 2)}</div></div>
                 <div class="kpi-card"><div class="label">Evidence confidence</div><div class="value">${Utils.escapeHtml(row.evidence_confidence_label || "—")}</div></div>
+                <div class="kpi-card"><div class="label">Evidence lane</div><div class="value">${Utils.escapeHtml(row.evidence_lane_label || "—")}</div></div>
                 <div class="kpi-card"><div class="label">Field check focus</div><div class="value">${Utils.escapeHtml(row.field_check_focus || "—")}</div></div>
             </div>
             <div class="callout" style="margin-top:0.75rem;">

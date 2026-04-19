@@ -9,6 +9,10 @@
     const STORAGE_KEY = "sitemonitor.experimental.visualReport";
     const SETTINGS_KEY = "sitemonitor.experimental.visualSettings";
     const RUN_STATE_KEY = "sitemonitor.experimental.visualReportRunState";
+
+    function scopedKey(baseKey, provider = "shared") {
+        return `${baseKey}.${String(provider || "shared").toLowerCase()}`;
+    }
     const DEFAULT_MAX_SOURCES = 54;
     const QS_METHOD_LABELS = {
         preferred: "Preferred auto",
@@ -42,16 +46,19 @@
         return normalizeReport(await response.json());
     }
 
-    function safeStorageSet(report) {
+    function safeStorageSet(report, provider = report?.provider) {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(report));
+            localStorage.setItem(scopedKey(STORAGE_KEY, provider), JSON.stringify(report));
         } catch (error) {
             // ignore quota issues in the experimental layer
         }
     }
 
-    function safeStorageGet() {
+    function safeStorageGet(provider) {
         try {
+            const scopedRaw = provider ? localStorage.getItem(scopedKey(STORAGE_KEY, provider)) : null;
+            if (scopedRaw) return normalizeReport(JSON.parse(scopedRaw));
             const raw = localStorage.getItem(STORAGE_KEY);
             return raw ? normalizeReport(JSON.parse(raw)) : null;
         } catch (error) {
@@ -80,16 +87,19 @@
         }
     }
 
-    function safeRunStateSet(state) {
+    function safeRunStateSet(state, provider = state?.provider) {
         try {
             localStorage.setItem(RUN_STATE_KEY, JSON.stringify(state));
+            localStorage.setItem(scopedKey(RUN_STATE_KEY, provider), JSON.stringify(state));
         } catch (error) {
             // ignore storage issues in the experimental layer
         }
     }
 
-    function safeRunStateGet() {
+    function safeRunStateGet(provider) {
         try {
+            const scopedRaw = provider ? localStorage.getItem(scopedKey(RUN_STATE_KEY, provider)) : null;
+            if (scopedRaw) return JSON.parse(scopedRaw);
             const raw = localStorage.getItem(RUN_STATE_KEY);
             return raw ? JSON.parse(raw) : null;
         } catch (error) {
@@ -270,7 +280,7 @@
                 started_at: new Date().toISOString(),
                 provider: settings.provider,
                 requested_max_sources: settings.maxSources
-            });
+            }, settings.provider);
 
             const allSources = await adapter.listSources({ useProxy: true });
             const filterQuery = String(settings.boreholeFilter || "").trim().toLowerCase();
@@ -342,7 +352,7 @@
                 source_reports: sourceReports
             };
 
-            safeStorageSet(report);
+            safeStorageSet(report, settings.provider);
             safeRunStateSet({
                 status: "ready",
                 run_id: runId,
@@ -350,7 +360,7 @@
                 provider: settings.provider,
                 requested_max_sources: settings.maxSources,
                 loaded_site_count: boreholeRows.length
-            });
+            }, settings.provider);
             const scopeLabel = settings.maxSources >= DEFAULT_MAX_SOURCES ? "full available cohort" : `${settings.maxSources}-source cohort`;
             setStatus(statusTarget, `Completed ${scopeLabel} analysis for ${boreholeRows.length} sources using ${formatQsMethodLabel(settings.qsMethod)}.`);
             return buildIndex(report);
@@ -362,7 +372,7 @@
                 failed_at: new Date().toISOString(),
                 provider: settings.provider,
                 requested_max_sources: settings.maxSources
-            });
+            }, settings.provider);
             throw error;
         }
     }
@@ -370,18 +380,19 @@
     async function waitForSharedReport(options = {}) {
         const statusTarget = options.statusTarget || null;
         const timeoutMs = options.timeoutMs || 120000;
+        const provider = options.provider || "shared";
         const startMs = Date.now();
         setStatus(statusTarget, "A full cohort load is already running in another page. Waiting to reuse it here...");
 
         while ((Date.now() - startMs) < timeoutMs) {
-            const report = safeStorageGet();
+            const report = safeStorageGet(provider);
             if (report?.cohort_request?.load_scope === "full_available_cohort") {
                 const loadedCount = report.network_summary?.site_count || report.health_summary_table?.length || report.borehole_summary_table?.length || 0;
                 setStatus(statusTarget, `Loaded cached cohort for ${loadedCount} boreholes from browser storage. Switching pages will reuse this same report.`);
                 return buildIndex(report);
             }
 
-            const runState = safeRunStateGet();
+            const runState = safeRunStateGet(provider);
             if (runState?.status === "error") {
                 throw new Error(runState.message || "The shared cohort load failed in another page.");
             }
@@ -395,6 +406,7 @@
     async function loadReport(options = {}) {
         const statusTarget = options.statusTarget || null;
         const requestedUrl = options.url || getQueryReportUrl() || options.defaultUrl || "";
+        const requestedProvider = options.provider || options.root?.getElementById?.("analysisProvider")?.value || buildDefaultAnalysisSettings().provider || "DCP";
 
         try {
             setStatus(statusTarget, "Loading report data...");
@@ -405,7 +417,7 @@
                 report = await fetchJson(requestedUrl);
                 sourceLabel = requestedUrl;
             } else {
-                report = safeStorageGet();
+                report = safeStorageGet(requestedProvider);
             }
 
             const shouldSeedFullCohort = !!(
@@ -415,9 +427,9 @@
             );
 
             if (shouldSeedFullCohort) {
-                const runState = safeRunStateGet();
+                const runState = safeRunStateGet(requestedProvider);
                 if (runState?.status === "running") {
-                    return await waitForSharedReport({ statusTarget });
+                    return await waitForSharedReport({ statusTarget, provider: requestedProvider });
                 }
                 return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: options.settings });
             }
@@ -426,7 +438,7 @@
                 throw new Error("No report is loaded yet. Run the live analysis above or optionally load a saved report.");
             }
 
-            safeStorageSet(report);
+            safeStorageSet(report, requestedProvider);
             const loadedCount = report.network_summary?.site_count || report.health_summary_table?.length || report.borehole_summary_table?.length || 0;
             const sourceMessage = sourceLabel === "browser storage"
                 ? `Loaded cached cohort for ${loadedCount} boreholes from browser storage. Switching pages will reuse this same report.`
@@ -461,6 +473,7 @@
             typology: byId("filterTypology")?.value || "",
             priority: byId("filterPriority")?.value || "",
             evidenceConfidence: byId("filterConfidence")?.value || "",
+            evidenceLane: byId("filterEvidenceLane")?.value || "",
             operationalBucket: byId("filterOperationalBucket")?.value || "",
             stressedOnly: !!byId("filterStressedOnly")?.checked,
             activeOnly: !!byId("filterActiveOnly")?.checked,
@@ -478,6 +491,7 @@
         if (filters.typology && row.typology_group !== filters.typology) return false;
         if (filters.priority && row.maintenance_priority_label !== filters.priority) return false;
         if (filters.evidenceConfidence && row.evidence_confidence_label !== filters.evidenceConfidence) return false;
+        if (filters.evidenceLane && row.evidence_lane_label !== filters.evidenceLane) return false;
         if (filters.operationalBucket && row.operational_bucket !== filters.operationalBucket) return false;
         if (filters.stressedOnly && !row.stress_flag && row.status_category !== "stressed" && row.status_category !== "declining_performance") return false;
         if (filters.activeOnly && (Utils.safeNumber(row.active_day_share) || 0) <= 0) return false;

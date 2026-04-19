@@ -220,6 +220,7 @@
                         <th><button data-sort="downtime_proxy_share">Downtime</button></th>
                         <th><button data-sort="latest_resting_level_m">Resting</button></th>
                         <th><button data-sort="latest_dynamic_level_m">Dynamic</button></th>
+                        <th><button data-sort="evidence_lane_label">Lane</button></th>
                         <th><button data-sort="evidence_confidence_score">Evidence</button></th>
                         <th>Daily sparkline</th>
                         <th>Interpretation</th>
@@ -239,6 +240,7 @@
                             <td>${Utils.formatPercent(row.downtime_proxy_share, 0)}</td>
                             <td>${Utils.formatNumber(row.latest_resting_level_m, 2)}</td>
                             <td>${Utils.formatNumber(row.latest_dynamic_level_m, 2)}</td>
+                            <td>${Utils.escapeHtml(row.evidence_lane_label || "—")}</td>
                             <td>${Utils.escapeHtml(row.evidence_confidence_label || "—")}</td>
                             <td>${Utils.sparklineSvg(daily.map((item) => item.daily_pumped_volume_m3))}</td>
                             <td>${Utils.escapeHtml(row.concise_interpretation || "—")}</td>

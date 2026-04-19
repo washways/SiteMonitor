@@ -265,6 +265,17 @@
         return "routine watch";
     }
 
+    function getEvidenceLaneLabel(row = {}) {
+        if (String(row.provider || "") === "SonSetLink" || row.approximate) return "screening lane";
+        return "analytical lane";
+    }
+
+    function getComparisonLane(row = {}) {
+        return getEvidenceLaneLabel(row) === "screening lane"
+            ? "separate screening board"
+            : "DCP performance board";
+    }
+
     function buildActionText(row, statusCategory, definition, evidence, fieldCheckFocus) {
         const confidenceText = evidence?.label || "limited evidence support";
         if (statusCategory === "unreliable_or_possible_fault") {
@@ -350,6 +361,8 @@
                 evidence_confidence_score: evidence.score,
                 evidence_confidence_label: evidence.label,
                 evidence_basis_note: evidence.basis,
+                evidence_lane_label: getEvidenceLaneLabel(row),
+                comparison_lane_label: getComparisonLane(row),
                 field_check_focus: fieldCheckFocus,
                 operational_bucket: determineOperationalBucket({ ...row, maintenance_priority_score: maintenancePriorityScore }, statusCategory, evidence)
             };
@@ -370,11 +383,13 @@
         const confidenceCounts = {};
         const reviewFocusCounts = {};
         const bucketCounts = {};
+        const laneCounts = {};
         healthSummaryTable.forEach((row) => {
             categoryCounts[row.status_category] = (categoryCounts[row.status_category] || 0) + 1;
             confidenceCounts[row.evidence_confidence_label] = (confidenceCounts[row.evidence_confidence_label] || 0) + 1;
             reviewFocusCounts[row.field_check_focus] = (reviewFocusCounts[row.field_check_focus] || 0) + 1;
             bucketCounts[row.operational_bucket] = (bucketCounts[row.operational_bucket] || 0) + 1;
+            laneCounts[row.evidence_lane_label] = (laneCounts[row.evidence_lane_label] || 0) + 1;
         });
 
         return {
@@ -396,6 +411,9 @@
                 .sort((a, b) => b.site_count - a.site_count),
             operational_bucket_summary_table: Object.entries(bucketCounts)
                 .map(([operational_bucket, site_count]) => ({ operational_bucket, site_count }))
+                .sort((a, b) => b.site_count - a.site_count),
+            evidence_lane_summary_table: Object.entries(laneCounts)
+                .map(([evidence_lane_label, site_count]) => ({ evidence_lane_label, site_count }))
                 .sort((a, b) => b.site_count - a.site_count),
             interpretation_note: "Rule-based interpretation only. These categories are operational review aids and are not machine-learning outputs or final diagnoses.",
             cohort_thresholds: cohort,
