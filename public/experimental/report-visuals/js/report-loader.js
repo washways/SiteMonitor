@@ -34,7 +34,8 @@
             health_summary_table: Array.isArray(report.health_summary_table) ? report.health_summary_table : [],
             priority_ranking_table: Array.isArray(report.priority_ranking_table) ? report.priority_ranking_table : [],
             network_comparison_table: Array.isArray(report.network_comparison_table) ? report.network_comparison_table : [],
-            category_summary_table: Array.isArray(report.category_summary_table) ? report.category_summary_table : []
+            category_summary_table: Array.isArray(report.category_summary_table) ? report.category_summary_table : [],
+            source_reports: Array.isArray(report.source_reports) ? report.source_reports : []
         };
     }
 

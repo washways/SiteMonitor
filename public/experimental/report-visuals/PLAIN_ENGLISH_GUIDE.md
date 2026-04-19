@@ -53,6 +53,14 @@ It helps answer:
 - which ones have the best supported specific-capacity values
 - which ones deserve a closer look first
 
+### Q/S method comparison
+Use this when you want to compare the different Q/S calculation approaches for the same sites.
+
+It helps answer:
+- how much the methods differ
+- which boreholes have stable or unstable Q/S estimates
+- whether the chosen method is close to the other candidates
+
 ### Field review board
 Use this when planning follow-up work.
 

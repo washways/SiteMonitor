@@ -3,20 +3,20 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Experimental Report Visuals — Cross-Site Comparison</title>
+    <title>Experimental Report Visuals — Q/S Method Comparison</title>
     <link rel="stylesheet" href="../../styles.css" />
     <link rel="stylesheet" href="styles/report-visuals.css" />
 </head>
 <body>
     <header>
-        <h1>Experimental Report Visuals — Cross-Site Comparison</h1>
-        <p class="viz-note">Experimental research page only. This view is isolated from the live site and is intended for cross-site methodology review rather than official public reporting.</p>
+        <h1>Experimental Report Visuals — Q/S Method Comparison</h1>
+        <p class="viz-note">Experimental research page only. This view compares the different Q/S approaches across the currently loaded sites.</p>
         <p><a href="network-overview.html">Network overview</a> · <a href="borehole-detail.html">Borehole detail</a> · <a href="cross-site-comparison.html">Cross-site comparison</a> · <a href="qs-method-comparison.html">Q/S method comparison</a> · <a href="field-review-board.html">Field review board</a> · <a href="screening-board.html">SonSetLink screening board</a></p>
     </header>
     <main>
         <section class="panel">
             <h2>Run live cohort analysis</h2>
-            <p class="viz-note">No upload is required. The full current cohort is cached locally and reused across all hidden review pages, so switching views stays fast.</p>
+            <p class="viz-note">No upload is required. This page compares all Q/S candidates for the sites currently loaded into the browser report.</p>
             <div class="filters-grid">
                 <label>Provider<select id="analysisProvider"><option value="DCP">DCP</option><option value="SonSetLink">SonSetLink</option></select></label>
                 <label>Borehole filter<input id="analysisBoreholeFilter" placeholder="Optional name or ID" /></label>
@@ -39,41 +39,35 @@
         </section>
 
         <section class="panel">
-            <h2>Filters and metric selection</h2>
+            <h2>Filters</h2>
             <div class="filters-grid">
                 <label>Provider<select id="filterProvider"></select></label>
                 <label>Borehole<select id="filterBorehole"></select></label>
                 <label>Status<select id="filterStatus"></select></label>
                 <label>Readiness tier<select id="filterReadiness"></select></label>
-                <label>Typology<select id="filterTypology"></select></label>
                 <label>Maintenance priority<select id="filterPriority"></select></label>
-                <label>Start date<input id="filterStartDate" type="date" /></label>
-                <label>End date<input id="filterEndDate" type="date" /></label>
-                <label>X metric<select id="metricX"></select></label>
-                <label>Y metric<select id="metricY"></select></label>
-                <label><input id="filterStressedOnly" type="checkbox" /> Stressed only</label>
                 <label><input id="filterActiveOnly" type="checkbox" /> Active only</label>
                 <label><input id="filterValidQsOnly" type="checkbox" /> Valid specific capacity only</label>
             </div>
+            <div class="actions">
+                <button id="btnDownloadQsComparisonCsv" class="secondary">Download Q/S comparison CSV</button>
+                <button id="btnDownloadQsComparisonJson" class="secondary">Download full report JSON</button>
+            </div>
+        </section>
+
+        <section class="panel">
+            <h2>Q/S comparison summary</h2>
+            <div id="qsComparisonKpis"></div>
         </section>
 
         <section class="viz-grid">
-            <section class="chart-box"><div id="heatmapChart"></div></section>
-            <section class="chart-box"><div id="metricScatter"></div></section>
+            <section class="chart-box"><div id="qsDistributionChart"></div></section>
+            <section class="chart-box"><div id="qsHeatmapChart"></div></section>
         </section>
 
         <section class="panel">
-            <h2>Typology and status breakdown</h2>
-            <div id="breakdownChart"></div>
-        </section>
-
-        <section class="panel">
-            <h2>Ranked tables</h2>
-            <div class="actions">
-                <button id="btnDownloadComparisonCsv" class="secondary">Download comparison CSV</button>
-                <button id="btnDownloadComparisonJson" class="secondary">Download full report JSON</button>
-            </div>
-            <div id="rankedTables"></div>
+            <h2>Per-site Q/S method table</h2>
+            <div id="qsComparisonTable"></div>
         </section>
     </main>
 
@@ -94,6 +88,6 @@
     <script src="../js/analytics/compute-interpretation-outputs.js?v=20260418k"></script>
     <script src="js/report-utils.js"></script>
     <script src="js/report-loader.js"></script>
-    <script src="js/cross-site-comparison.js"></script>
+    <script src="js/qs-method-comparison.js"></script>
 </body>
 </html>

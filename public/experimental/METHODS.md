@@ -31,6 +31,7 @@ The current experimental analytics flow is deliberately staged so that every tra
 8. borehole-level summaries
 9. network-level comparisons
 10. interpretation and review labels
+11. Q/S method comparison board for cross-checking candidate approaches site by site
 
 This staged design is important because it keeps the calculations auditable and allows later reviewers to inspect where a value came from.
 
