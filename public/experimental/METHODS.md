@@ -49,6 +49,8 @@ SonSetLink remains a screening lane. It can contribute useful operational contex
 
 Where the code creates approximate or screening values, those flags are intentionally preserved in the outputs.
 
+The current default opening workflow on the hidden review pages is DCP for Malawi over the last 14 days. This is intended to give users a fast and higher-confidence starting point before they open advanced options.
+
 ---
 
 ## 3. Shared normalized telemetry schema

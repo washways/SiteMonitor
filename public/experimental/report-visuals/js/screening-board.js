@@ -17,9 +17,6 @@
         window.location.href = `borehole-detail.html?${params.toString()}`;
     }
 
-    function forceSonSetLinkDefaults() {
-        if (el("analysisProvider")) el("analysisProvider").value = "SonSetLink";
-    }
 
     function populateFilters(index) {
         const rows = index.report.health_summary_table || [];
@@ -183,12 +180,8 @@
                 defaultUrl: DEFAULT_REPORT_URL,
                 statusTarget: el("pageStatus"),
                 root: document,
-                runLiveIfMissing: false,
-                provider: "SonSetLink"
+                runLiveIfMissing: true
             });
-            if ((reportIndex?.report?.provider || "") !== "SonSetLink") {
-                reportIndex = await Loader.runLiveAnalysis({ root: document, statusTarget: el("pageStatus") });
-            }
         } catch (error) {
             reportIndex = await Loader.runLiveAnalysis({ root: document, statusTarget: el("pageStatus") });
         }
@@ -196,7 +189,6 @@
 
     async function init() {
         Loader.populateAnalysisControls(document);
-        forceSonSetLinkDefaults();
 
         try {
             await loadPreferredReport();
@@ -208,7 +200,6 @@
 
         el("btnRunLiveAnalysis")?.addEventListener("click", async () => {
             try {
-                forceSonSetLinkDefaults();
                 reportIndex = await Loader.runLiveAnalysis({ root: document, statusTarget: el("pageStatus") });
                 populateFilters(reportIndex);
                 renderAll();
@@ -226,8 +217,7 @@
         });
 
         el("loadReportUrl")?.addEventListener("click", async () => {
-            forceSonSetLinkDefaults();
-            reportIndex = await Loader.loadReport({ url: el("reportUrl")?.value || "", statusTarget: el("pageStatus"), provider: "SonSetLink" });
+            reportIndex = await Loader.loadReport({ url: el("reportUrl")?.value || "", statusTarget: el("pageStatus") });
             populateFilters(reportIndex);
             renderAll();
         });

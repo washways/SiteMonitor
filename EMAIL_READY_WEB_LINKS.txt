@@ -2,12 +2,12 @@ Page | Web address | Description
 Main dashboard | https://washways.org/SiteMonitor/index.html | Main live dashboard
 Qs dashboard | https://washways.org/SiteMonitor/pulse-report.html | Event and Qs review page
 Methodology | https://washways.org/SiteMonitor/methodology.html | Public method summary
-Network overview | https://washways.org/SiteMonitor/experimental/report-visuals/network-overview.html | Whole-network review page
+Network overview | https://washways.org/SiteMonitor/experimental/report-visuals/network-overview.html | Whole-network review page; defaults to DCP Malawi for the last 14 days
 Borehole detail | https://washways.org/SiteMonitor/experimental/report-visuals/borehole-detail.html | Single-borehole detail page
 Cross-site comparison | https://washways.org/SiteMonitor/experimental/report-visuals/cross-site-comparison.html | Compare boreholes side by side
-Q/S method comparison | https://washways.org/SiteMonitor/experimental/report-visuals/qs-method-comparison.html | Compare the different Q/S methods for all loaded sites
+Q/S method comparison | https://washways.org/SiteMonitor/experimental/report-visuals/qs-method-comparison.html | Compare the different Q/S methods for the loaded DCP Malawi review set
 Field review board | https://washways.org/SiteMonitor/experimental/report-visuals/field-review-board.html | Follow-up shortlist page
-SonSetLink screening board | https://washways.org/SiteMonitor/experimental/report-visuals/screening-board.html | Separate SonSetLink screening page
+SonSetLink screening board | https://washways.org/SiteMonitor/experimental/report-visuals/screening-board.html | Screening page with advanced option to switch from the standard DCP starting view
 GitHub repo | https://github.com/washways/SiteMonitor | Public code repository
 Experimental methods | https://github.com/washways/SiteMonitor/blob/main/public/experimental/METHODS.md | Notes on the experimental analytics
 Simple guide | https://github.com/washways/SiteMonitor/blob/main/public/experimental/report-visuals/PLAIN_ENGLISH_GUIDE.md | Plain-language guide

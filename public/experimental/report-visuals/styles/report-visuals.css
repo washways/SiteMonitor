@@ -244,6 +244,65 @@ header .viz-note {
     min-height: 520px;
 }
 
+.advanced-controls {
+    margin-top: 0.85rem;
+    padding: 0.75rem 0.9rem;
+    background: #f8fbff;
+    border: 1px solid var(--viz-border);
+    border-radius: 10px;
+}
+
+.advanced-controls summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: #1e3a8a;
+}
+
+.advanced-grid {
+    margin-top: 0.75rem;
+}
+
+.page-loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.35);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 9998;
+    padding: 1rem;
+}
+
+.page-loading-overlay.open {
+    display: flex;
+}
+
+.page-loading-card {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    background: #ffffff;
+    color: #0f172a;
+    padding: 0.9rem 1rem;
+    border-radius: 12px;
+    border: 1px solid var(--viz-border);
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.18);
+    min-width: min(420px, 92vw);
+}
+
+.page-loading-spinner {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    border: 3px solid #cbd5e1;
+    border-top-color: var(--viz-accent);
+    animation: page-spin 0.8s linear infinite;
+}
+
+@keyframes page-spin {
+    to { transform: rotate(360deg); }
+}
+
 @media (max-width: 900px) {
     .detail-header,
     .loader-row {

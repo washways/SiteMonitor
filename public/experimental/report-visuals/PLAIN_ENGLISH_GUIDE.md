@@ -11,16 +11,19 @@ It is not meant to replace field judgement.
 
 You do not need to upload data first. Each page can run a fresh cohort analysis directly from the telemetry pipeline.
 
+By default, the hidden review pages start with DCP data for Malawi over the last 14 days. This is used as the standard opening view because it is the faster and higher-confidence routine review lane.
+
 ---
 
 ## Quick start
 
 1. Open one of the hidden review pages.
-2. Choose the provider and date range.
-3. Click the run-analysis button.
-4. Use the filters to narrow the list.
-5. Click a borehole name to open the detailed page.
-6. Download CSV or JSON if you want to share or review results offline.
+2. Wait for the loading spinner if the page is pulling fresh telemetry.
+3. Start with the default DCP Malawi 14-day view.
+4. Open the advanced options only if you need a different provider or tuning.
+5. Use the filters to narrow the list.
+6. Click a borehole name to open the detailed page.
+7. Download CSV or JSON if you want to share or review results offline.
 
 ---
 

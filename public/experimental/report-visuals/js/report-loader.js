@@ -14,7 +14,7 @@
         return `${baseKey}.${String(provider || "shared").toLowerCase()}`;
     }
     const DEFAULT_MAX_SOURCES = 54;
-    const DEFAULT_PROVIDER = "all";
+    const DEFAULT_PROVIDER = "DCP";
     const DEFAULT_LOOKBACK_DAYS = 14;
     const DEFAULT_COUNTRY_SCOPE = "Malawi";
     const QS_METHOD_LABELS = {
@@ -61,8 +61,10 @@
 
     function safeStorageGet(provider) {
         try {
-            const scopedRaw = provider ? localStorage.getItem(scopedKey(STORAGE_KEY, provider)) : null;
-            if (scopedRaw) return normalizeReport(JSON.parse(scopedRaw));
+            if (provider && provider !== "shared") {
+                const scopedRaw = localStorage.getItem(scopedKey(STORAGE_KEY, provider));
+                return scopedRaw ? normalizeReport(JSON.parse(scopedRaw)) : null;
+            }
             const raw = localStorage.getItem(STORAGE_KEY);
             return raw ? normalizeReport(JSON.parse(raw)) : null;
         } catch (error) {
@@ -102,8 +104,10 @@
 
     function safeRunStateGet(provider) {
         try {
-            const scopedRaw = provider ? localStorage.getItem(scopedKey(RUN_STATE_KEY, provider)) : null;
-            if (scopedRaw) return JSON.parse(scopedRaw);
+            if (provider && provider !== "shared") {
+                const scopedRaw = localStorage.getItem(scopedKey(RUN_STATE_KEY, provider));
+                return scopedRaw ? JSON.parse(scopedRaw) : null;
+            }
             const raw = localStorage.getItem(RUN_STATE_KEY);
             return raw ? JSON.parse(raw) : null;
         } catch (error) {
@@ -127,10 +131,39 @@
         };
     }
 
+    function ensureLoadingOverlay(root = document) {
+        const doc = root?.ownerDocument || root || document;
+        let overlay = doc.getElementById("pageLoadingOverlay");
+        if (overlay) return overlay;
+
+        overlay = doc.createElement("div");
+        overlay.id = "pageLoadingOverlay";
+        overlay.className = "page-loading-overlay";
+        overlay.innerHTML = `
+            <div class="page-loading-card" role="status" aria-live="polite" aria-busy="true">
+                <div class="page-loading-spinner"></div>
+                <div id="pageLoadingMessage">Loading data…</div>
+            </div>`;
+        doc.body.appendChild(overlay);
+        return overlay;
+    }
+
+    function setLoading(root = document, isLoading, message = "Loading data…") {
+        const overlay = ensureLoadingOverlay(root);
+        const label = overlay.querySelector("#pageLoadingMessage");
+        if (label) label.textContent = message || "Loading data…";
+        overlay.classList.toggle("open", !!isLoading);
+    }
+
     function setStatus(target, message, isError) {
         if (!target) return;
         target.textContent = message;
         target.style.color = isError ? "#b91c1c" : "#334155";
+        const overlay = ensureLoadingOverlay(target.ownerDocument || document);
+        const label = overlay.querySelector("#pageLoadingMessage");
+        if (label && overlay.classList.contains("open")) {
+            label.textContent = message || "Loading data…";
+        }
     }
 
     function getQueryParams() {
@@ -143,6 +176,17 @@
 
     function formatQsMethodLabel(method) {
         return QS_METHOD_LABELS[method] || method || "Preferred auto";
+    }
+
+    function humanizeLoadError(error, provider = DEFAULT_PROVIDER) {
+        const raw = String(error?.message || error || "").trim();
+        if (!raw) {
+            return `Could not load ${provider} telemetry for ${DEFAULT_COUNTRY_SCOPE}. Please wait and try again.`;
+        }
+        if (/failed to fetch|http 403|timed out/i.test(raw)) {
+            return `Could not load live ${provider} telemetry for ${DEFAULT_COUNTRY_SCOPE} right now. Please wait and try again.`;
+        }
+        return raw;
     }
 
     function matchesBoreholeFilter(source = {}, query = "") {
@@ -302,6 +346,7 @@
         const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
         try {
+            setLoading(root, true, `Loading ${settings.provider} ${DEFAULT_COUNTRY_SCOPE} data and running calculations...`);
             setStatus(statusTarget, "Loading real telemetry sources for the cohort analysis...");
             safeSettingsSet(settings);
             safeRunStateSet({
@@ -398,15 +443,18 @@
             setStatus(statusTarget, `Completed ${scopeLabel} analysis for ${boreholeRows.length} sources using ${formatQsMethodLabel(settings.qsMethod)}.`);
             return buildIndex(report);
         } catch (error) {
+            const message = humanizeLoadError(error, settings.provider);
             safeRunStateSet({
                 status: "error",
                 run_id: runId,
-                message: error.message,
+                message,
                 failed_at: new Date().toISOString(),
                 provider: settings.provider,
                 requested_max_sources: settings.maxSources
             }, settings.provider);
-            throw error;
+            throw new Error(message);
+        } finally {
+            setLoading(root, false);
         }
     }
 
@@ -415,6 +463,7 @@
         const timeoutMs = options.timeoutMs || 120000;
         const provider = options.provider || "shared";
         const startMs = Date.now();
+        setLoading(options.root || document, true, "A full cohort load is already running in another page. Waiting to reuse it here...");
         setStatus(statusTarget, "A full cohort load is already running in another page. Waiting to reuse it here...");
 
         while ((Date.now() - startMs) < timeoutMs) {
@@ -442,6 +491,7 @@
         const requestedProvider = options.provider || options.root?.getElementById?.("analysisProvider")?.value || buildDefaultAnalysisSettings().provider || DEFAULT_PROVIDER;
 
         try {
+            setLoading(options.root || document, true, "Loading report data...");
             setStatus(statusTarget, "Loading report data...");
             let report = null;
             let sourceLabel = "browser storage";
@@ -479,13 +529,16 @@
             setStatus(statusTarget, sourceMessage);
             return buildIndex(report);
         } catch (error) {
+            const message = humanizeLoadError(error, requestedProvider);
             safeRunStateSet({
                 status: "error",
-                message: error.message,
+                message,
                 failed_at: new Date().toISOString()
             });
-            setStatus(statusTarget, error.message, true);
-            throw error;
+            setStatus(statusTarget, message, true);
+            throw new Error(message);
+        } finally {
+            setLoading(options.root || document, false);
         }
     }
 
