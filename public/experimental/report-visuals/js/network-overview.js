@@ -37,12 +37,6 @@
         addOptions(el("filterReadiness"), rows.map((row) => row.analysis_readiness_tier), "All readiness tiers");
         addOptions(el("filterTypology"), rows.map((row) => row.typology_group), "All typologies");
         addOptions(el("filterPriority"), rows.map((row) => row.maintenance_priority_label), "All priorities");
-
-        const dates = (index.report.daily_rows || []).map((row) => row.date).filter(Boolean).sort();
-        if (dates.length) {
-            if (el("filterStartDate") && !el("filterStartDate").value) el("filterStartDate").value = dates[0];
-            if (el("filterEndDate") && !el("filterEndDate").value) el("filterEndDate").value = dates[dates.length - 1];
-        }
     }
 
     function getFiltered() {

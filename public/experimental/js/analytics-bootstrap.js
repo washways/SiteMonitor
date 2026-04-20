@@ -6,17 +6,13 @@
 
     const el = (id) => document.getElementById(id);
     const QS_METHODS = {
-        preferred: {
-            label: "Preferred auto",
-            description: "Automatically chooses the most supported event-based Q/S candidate, preferring stable-tail flow where available."
+        event_median_proxy: {
+            label: "Event median / max drawdown",
+            description: "Uses the median positive flow across the whole event divided by the maximum observed drawdown."
         },
         stable_tail_proxy: {
             label: "Stable-tail median / max drawdown",
             description: "Uses the median late-event stable flow divided by the maximum observed drawdown for the event."
-        },
-        event_median_proxy: {
-            label: "Event median / max drawdown",
-            description: "Uses the median positive flow across the whole event divided by the maximum observed drawdown."
         },
         current_proxy: {
             label: "Last flow / end drawdown",
@@ -50,17 +46,17 @@
     }
 
     function getSelectedQsMethod() {
-        return String(el("qsMethod")?.value || "preferred");
+        return String(el("qsMethod")?.value || "event_median_proxy");
     }
 
     function formatQsMethodLabel(method) {
-        return QS_METHODS[method]?.label || method || "Preferred auto";
+        return QS_METHODS[method]?.label || method || "Event median / max drawdown";
     }
 
     function setQsMethodNote() {
         const target = el("qsMethodNote");
         if (!target) return;
-        target.textContent = QS_METHODS[getSelectedQsMethod()]?.description || QS_METHODS.preferred.description;
+        target.textContent = QS_METHODS[getSelectedQsMethod()]?.description || QS_METHODS.event_median_proxy.description;
     }
 
     function getBoreholeFilterText() {
@@ -141,7 +137,7 @@
         const ready = (report.borehole_summary_table || []).filter((row) => ["A", "B"].includes(row.analysis_readiness_tier)).length;
         const stressedOrDeclining = (report.health_summary_table || []).filter((row) => ["stressed", "declining_performance"].includes(row.status_category)).length;
         const topPriority = (report.priority_ranking_table || [])[0];
-        const qsMethodLabel = report.qs_method_label || "Preferred auto";
+        const qsMethodLabel = report.qs_method_label || "Event median / max drawdown";
         const stableTailSites = report.network_summary?.stable_tail_capable_site_count || 0;
         const shortBurstSites = report.network_summary?.short_burst_dominant_site_count || 0;
         target.innerHTML = `

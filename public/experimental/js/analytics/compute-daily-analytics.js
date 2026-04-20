@@ -29,6 +29,15 @@
         return [...new Set((flags || []).filter(Boolean).map(String))];
     }
 
+    function isGapOrNullLimitedDetail(detail = {}) {
+        return uniqueFlags(detail?.quality_flags || []).some((flag) => [
+            "insufficient_water_level",
+            "event_contains_gap",
+            "sparse_event_signal",
+            "insufficient_post_event_level_support"
+        ].includes(flag));
+    }
+
     function getSpecificCapacityForMethod(row = {}, requestedMethod = "preferred") {
         const candidates = row?.specific_capacity_candidates || {};
         const preferredMethod = row?.preferred_specific_capacity_method || "current_proxy";
@@ -120,7 +129,7 @@
         const highDrawdownThresholdM = Number.isFinite(Number(options.highDrawdownThresholdM)) ? Number(options.highDrawdownThresholdM) : 2;
         const lowSpecificCapacityThreshold = Number.isFinite(Number(options.lowSpecificCapacityThreshold)) ? Number(options.lowSpecificCapacityThreshold) : 0.25;
         const weakRecoveryHoursThreshold = Number.isFinite(Number(options.weakRecoveryHoursThreshold)) ? Number(options.weakRecoveryHoursThreshold) : 8;
-        const qsMethod = String(options.qsMethod || "preferred");
+        const qsMethod = String(options.qsMethod || "event_median_proxy");
 
         return eventRows.map((row, index) => {
             const eventState = completedEvents[index] || {};
@@ -210,6 +219,7 @@
                 active_qs_method: null,
                 flow_observation_count: 0,
                 level_observation_count: 0,
+                _rawPositiveFlows: [],
                 downtime_indicator: 0,
                 daily_quality_flags: [],
                 _flowFlags: [],
@@ -228,7 +238,9 @@
         const flowThreshold = Number.isFinite(Number(options.flowThreshold))
             ? Number(options.flowThreshold)
             : Number(report?.detected?.flow_threshold || 0.1);
-        const qsMethod = String(options.qsMethod || "preferred");
+        const minDailyFlowObservations = Number.isFinite(Number(options.minDailyFlowObservations)) ? Number(options.minDailyFlowObservations) : 2;
+        const minDailyLevelObservations = Number.isFinite(Number(options.minDailyLevelObservations)) ? Number(options.minDailyLevelObservations) : 2;
+        const qsMethod = String(options.qsMethod || "event_median_proxy");
         const defaultIntervalMs = typicalIntervalMs(flowPoints);
         const dayMap = new Map();
         const eventDetails = buildEventDetailRows(report, { ...options, qsMethod });
@@ -247,6 +259,9 @@
             const row = ensureDailyRow(dayMap, source, date);
             row.flow_observation_count += 1;
             row._flowFlags.push(...(point.flags || []));
+            if (Number(point.value) > 0) {
+                row._rawPositiveFlows.push(Number(point.value));
+            }
             if (Number(point.value) > flowThreshold) {
                 const spanHours = estimateSpanHours(flowPoints, index, defaultIntervalMs);
                 row.daily_pumped_volume_m3 += Number(point.value) * spanHours;
@@ -278,7 +293,8 @@
         const dailyRows = Array.from(dayMap.values())
             .sort((a, b) => a.date.localeCompare(b.date))
             .map((row) => {
-                const drawdowns = row._eventDetails
+                const reliableDrawdownDetails = row._eventDetails.filter((detail) => !isGapOrNullLimitedDetail(detail));
+                const drawdowns = reliableDrawdownDetails
                     .map((detail) => detail.drawdown_m)
                     .filter((value) => value !== null && value !== undefined && Number.isFinite(Number(value)))
                     .map(Number);
@@ -306,8 +322,8 @@
                 row.worst_specific_capacity_m3h_per_m = round(specificCapacities.length ? Math.min(...specificCapacities) : null);
                 row.valid_specific_capacity_event_count = specificCapacities.length;
                 row.median_recovery_time_h = round(median(recoveries), 2);
-                row.daily_max_flow_m3h = round(maxFlows.length ? Math.max(...maxFlows) : null);
-                row.median_event_flow_m3h = round(median(eventFlows));
+                row.daily_max_flow_m3h = round(maxFlows.length ? Math.max(...maxFlows) : (row._rawPositiveFlows.length ? Math.max(...row._rawPositiveFlows) : null));
+                row.median_event_flow_m3h = round(median(eventFlows.length ? eventFlows : row._rawPositiveFlows));
                 row.stress_event_count = row._eventDetails.filter((detail) => detail.stress_event).length;
                 row.recovery_weakness_count = row._eventDetails.filter((detail) => (detail.stress_reasons || []).includes("slow_recovery_event") || (detail.stress_reasons || []).includes("recovery_not_observed")).length;
                 row.stable_tail_event_count = row._eventDetails.filter((detail) => detail.has_stable_tail_support).length;
@@ -318,10 +334,33 @@
                 row.estimated_daily_resting_level_m = restEstimate.estimated_daily_resting_level_m;
                 row.downtime_indicator = row.flow_observation_count > 0 && row.daily_pumped_volume_m3 <= 0 ? 1 : 0;
 
+                const sparseFlowSupport = row.flow_observation_count > 0 && row.flow_observation_count < minDailyFlowObservations;
+                const sparseLevelSupport = row.level_observation_count > 0 && row.level_observation_count < minDailyLevelObservations;
+                const nonPositiveLevelDetected = [
+                    row.daily_min_groundwater_level_m,
+                    row.daily_max_groundwater_level_m,
+                    row.estimated_daily_resting_level_m
+                ].some((value) => Number.isFinite(Number(value)) && Number(value) <= 0);
+
+                if (sparseLevelSupport || nonPositiveLevelDetected) {
+                    row.daily_min_groundwater_level_m = null;
+                    row.daily_max_groundwater_level_m = null;
+                    row.estimated_daily_resting_level_m = null;
+                    row.median_recovery_time_h = null;
+                }
+
+                if (sparseFlowSupport && row.event_count <= 0 && !row._rawPositiveFlows.length) {
+                    row.daily_max_flow_m3h = null;
+                    row.median_event_flow_m3h = null;
+                }
+
                 row.daily_quality_flags = uniqueFlags([
                     ...(row.approximate ? ["approximate_source"] : []),
                     ...(qcSummary.is_approximate ? ["approximate_source"] : []),
                     ...(row.downtime_indicator ? ["downtime_proxy"] : []),
+                    ...(sparseFlowSupport ? ["sparse_daily_flow_support"] : []),
+                    ...(sparseLevelSupport ? ["sparse_daily_level_support"] : []),
+                    ...(nonPositiveLevelDetected ? ["nonpositive_level_screened"] : []),
                     ...(row._eventDetails.flatMap((detail) => detail.quality_flags || [])),
                     ...(row._eventDetails.flatMap((detail) => detail.stress_reasons || [])),
                     ...(restEstimate.flags || []),
@@ -335,6 +374,7 @@
 
                 delete row._flowFlags;
                 delete row._eventDetails;
+                delete row._rawPositiveFlows;
                 return row;
             });
 

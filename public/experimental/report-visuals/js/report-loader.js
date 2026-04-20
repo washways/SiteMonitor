@@ -9,6 +9,7 @@
     const STORAGE_KEY = "sitemonitor.experimental.visualReport";
     const SETTINGS_KEY = "sitemonitor.experimental.visualSettings";
     const RUN_STATE_KEY = "sitemonitor.experimental.visualReportRunState";
+    const RUN_STATE_STALE_MS = 180000;
 
     function scopedKey(baseKey, provider = "shared") {
         return `${baseKey}.${String(provider || "shared").toLowerCase()}`;
@@ -19,9 +20,8 @@
     const DEFAULT_LOOKBACK_DAYS = 14;
     const DEFAULT_COUNTRY_SCOPE = "Malawi";
     const QS_METHOD_LABELS = {
-        preferred: "Preferred auto",
-        stable_tail_proxy: "Stable-tail median / max drawdown",
         event_median_proxy: "Event median / max drawdown",
+        stable_tail_proxy: "Stable-tail median / max drawdown",
         current_proxy: "Last flow / end drawdown",
         late_mean_proxy: "Late mean / max drawdown",
         max_stress_proxy: "Max flow / max drawdown"
@@ -117,6 +117,30 @@
         }
     }
 
+    function safeRunStateClear(provider) {
+        try {
+            localStorage.removeItem(RUN_STATE_KEY);
+            if (provider && provider !== "shared") {
+                localStorage.removeItem(scopedKey(RUN_STATE_KEY, provider));
+            }
+        } catch (error) {
+            // ignore storage issues in the experimental layer
+        }
+    }
+
+    function getActiveRunState(provider) {
+        const runState = safeRunStateGet(provider);
+        if (!runState || runState.status !== "running") return runState;
+
+        const activityAtMs = Date.parse(runState.updated_at || runState.started_at || "") || 0;
+        if (!activityAtMs || (Date.now() - activityAtMs) > RUN_STATE_STALE_MS) {
+            safeRunStateClear(provider);
+            return null;
+        }
+
+        return runState;
+    }
+
     function buildIndex(report) {
         const baseRows = report.health_summary_table.length
             ? report.health_summary_table
@@ -177,7 +201,7 @@
     }
 
     function formatQsMethodLabel(method) {
-        return QS_METHOD_LABELS[method] || method || "Preferred auto";
+        return QS_METHOD_LABELS[method] || method || "Event median / max drawdown";
     }
 
     function humanizeLoadError(error, provider = DEFAULT_PROVIDER) {
@@ -237,8 +261,8 @@
             maxSources: normalizeMaxSources(params.get("maxSources") || DEFAULT_MAX_SOURCES),
             flowThreshold: Number(params.get("flowThreshold") || saved.flowThreshold || 0.1),
             graceHours: Number(params.get("graceHours") || saved.graceHours || 2),
-            qsMethod: params.get("qsMethod") || saved.qsMethod || "preferred",
-            boreholeFilter: params.get("borehole") || ""
+            qsMethod: params.get("qsMethod") || saved.qsMethod || "event_median_proxy",
+            boreholeFilter: params.get("analysisBorehole") || ""
         };
     }
 
@@ -270,7 +294,7 @@
             maxSources: normalizeMaxSources(byId("analysisMaxSources")?.value || ""),
             flowThreshold: Number(byId("analysisFlowThreshold")?.value || 0.1),
             graceHours: Number(byId("analysisGraceHours")?.value || 2),
-            qsMethod: byId("analysisQsMethod")?.value || "preferred",
+            qsMethod: byId("analysisQsMethod")?.value || "event_median_proxy",
             boreholeFilter: String(byId("analysisBoreholeFilter")?.value || "").trim(),
             window: { start, end }
         };
@@ -362,6 +386,7 @@
                 status: "running",
                 run_id: runId,
                 started_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
                 provider: settings.provider,
                 requested_max_sources: settings.maxSources || "all_available"
             }, settings.provider);
@@ -408,6 +433,16 @@
                     sourceReports.push(result.report);
                 });
 
+                safeRunStateSet({
+                    status: "running",
+                    run_id: runId,
+                    started_at: safeRunStateGet(settings.provider)?.started_at || new Date().toISOString(),
+                    updated_at: new Date().toISOString(),
+                    provider: settings.provider,
+                    requested_max_sources: settings.maxSources || "all_available",
+                    processed_source_count: Math.min(i + batchSize, selected.length),
+                    selected_source_count: selected.length
+                }, settings.provider);
                 setStatus(statusTarget, `Processed ${Math.min(i + batchSize, selected.length)} of ${selected.length} sources using ${formatQsMethodLabel(settings.qsMethod)}${filterQuery ? ` for borehole filter \"${filterQuery}\"` : ""}.`);
             }
 
@@ -486,9 +521,12 @@
                 return buildIndex(report);
             }
 
-            const runState = safeRunStateGet(provider);
+            const runState = getActiveRunState(provider);
             if (runState?.status === "error") {
                 throw new Error(runState.message || "The shared cohort load failed in another page.");
+            }
+            if (!runState) {
+                return null;
             }
 
             await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -525,9 +563,13 @@
             );
 
             if (shouldSeedFullCohort) {
-                const runState = safeRunStateGet(requestedProvider);
+                const runState = getActiveRunState(requestedProvider);
                 if (runState?.status === "running") {
-                    return await waitForSharedReport({ statusTarget, provider: requestedProvider });
+                    const sharedReport = await waitForSharedReport({ statusTarget, provider: requestedProvider, root: options.root || document });
+                    if (sharedReport) {
+                        return sharedReport;
+                    }
+                    setStatus(statusTarget, "A previous cohort load lock expired. Starting a fresh shared analysis now.");
                 }
                 return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: options.settings });
             }
@@ -578,9 +620,7 @@
             operationalBucket: byId("filterOperationalBucket")?.value || "",
             stressedOnly: !!byId("filterStressedOnly")?.checked,
             activeOnly: !!byId("filterActiveOnly")?.checked,
-            validQsOnly: !!byId("filterValidQsOnly")?.checked,
-            startDate: byId("filterStartDate")?.value || "",
-            endDate: byId("filterEndDate")?.value || ""
+            validQsOnly: !!byId("filterValidQsOnly")?.checked
         };
     }
 
@@ -600,14 +640,6 @@
         return true;
     }
 
-    function matchesDate(row, filters) {
-        const date = Utils.toDateString(row.date);
-        if (!date) return true;
-        if (filters.startDate && date < filters.startDate) return false;
-        if (filters.endDate && date > filters.endDate) return false;
-        return true;
-    }
-
     function applyFilters(index, filters = {}) {
         const healthRows = (index.report.health_summary_table || []).filter((row) => matchesRow(row, filters));
         const baseRows = (healthRows.length ? healthRows : index.baseRows).filter((row) => matchesRow(row, filters));
@@ -619,8 +651,8 @@
             healthRows: (index.report.health_summary_table || []).filter((row) => allowedKeys.has(Utils.boreholeKey(row))),
             priorityRows: (index.report.priority_ranking_table || []).filter((row) => allowedKeys.has(Utils.boreholeKey(row))),
             comparisonRows: (index.report.network_comparison_table || []).filter((row) => allowedKeys.has(Utils.boreholeKey(row))),
-            dailyRows: (index.report.daily_rows || []).filter((row) => allowedKeys.has(Utils.boreholeKey(row)) && matchesDate(row, filters)),
-            rollingRows: (index.report.rolling_rows || []).filter((row) => allowedKeys.has(Utils.boreholeKey(row)) && matchesDate(row, filters)),
+            dailyRows: (index.report.daily_rows || []).filter((row) => allowedKeys.has(Utils.boreholeKey(row))),
+            rollingRows: (index.report.rolling_rows || []).filter((row) => allowedKeys.has(Utils.boreholeKey(row))),
             categoryRows: index.report.category_summary_table || [],
             allowedKeys
         };

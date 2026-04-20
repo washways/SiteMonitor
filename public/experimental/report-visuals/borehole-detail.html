@@ -28,7 +28,7 @@
                 <div class="filters-grid advanced-grid">
                     <label>Provider<select id="analysisProvider"><option value="DCP">DCP (default)</option><option value="SonSetLink">SonSetLink screening</option><option value="all">All providers</option></select></label>
                     <label>Sources to load<input id="analysisMaxSources" type="number" min="1" step="1" placeholder="Blank = all available" /></label>
-                    <label>Q/S method<select id="analysisQsMethod"><option value="preferred">Preferred auto</option><option value="stable_tail_proxy">Stable-tail median / max drawdown</option><option value="event_median_proxy">Event median / max drawdown</option><option value="current_proxy">Last flow / end drawdown</option><option value="late_mean_proxy">Late mean / max drawdown</option><option value="max_stress_proxy">Max flow / max drawdown</option></select></label>
+                    <label>Q/S method<select id="analysisQsMethod"><option value="event_median_proxy" selected>Event median / max drawdown</option><option value="stable_tail_proxy">Stable-tail median / max drawdown</option><option value="current_proxy">Last flow / end drawdown</option><option value="late_mean_proxy">Late mean / max drawdown</option><option value="max_stress_proxy">Max flow / max drawdown</option></select></label>
                     <label>Flow threshold<input id="analysisFlowThreshold" type="number" step="0.01" value="0.1" /></label>
                     <label>Grace hours<input id="analysisGraceHours" type="number" step="0.5" value="2" /></label>
                 </div>
@@ -48,12 +48,12 @@
             <h2>Filters</h2>
             <div class="filters-grid">
                 <label>Borehole<select id="filterBorehole"></select></label>
-                <label>Start date<input id="filterStartDate" type="date" /></label>
-                <label>End date<input id="filterEndDate" type="date" /></label>
+                <label>Displayed Q/S method<select id="detailQsMethod"><option value="event_median_proxy" selected>Event median / max drawdown</option><option value="stable_tail_proxy">Stable-tail median / max drawdown</option><option value="current_proxy">Last flow / end drawdown</option><option value="late_mean_proxy">Late mean / max drawdown</option><option value="max_stress_proxy">Max flow / max drawdown</option></select></label>
                 <label><input id="filterValidQsOnly" type="checkbox" /> Valid specific capacity only</label>
                 <label><input id="filterActiveOnly" type="checkbox" /> Active only</label>
             </div>
             <div class="actions">
+                <button id="btnApplyDetailQsMethod" class="secondary">Apply Q/S method to shared analysis</button>
                 <button id="btnDownloadDetailCsv" class="secondary">Download current borehole CSV</button>
                 <button id="btnDownloadDetailJson" class="secondary">Download current borehole JSON</button>
             </div>

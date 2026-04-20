@@ -115,6 +115,35 @@
         return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().split("T")[0];
     }
 
+    function getSharedDateRange(rows = [], filters = {}) {
+        const explicitStart = toDateString(filters.startDate);
+        const explicitEnd = toDateString(filters.endDate);
+        if (explicitStart && explicitEnd) {
+            return [explicitStart, explicitEnd];
+        }
+
+        const dates = (rows || [])
+            .map((row) => toDateString(row?.date || row))
+            .filter(Boolean)
+            .sort();
+
+        if (!dates.length && !(explicitStart || explicitEnd)) return null;
+        return [explicitStart || dates[0], explicitEnd || dates[dates.length - 1]];
+    }
+
+    function buildDateAxis(rows = [], filters = {}, extra = {}) {
+        const range = getSharedDateRange(rows, filters);
+        return {
+            type: "date",
+            tickformat: "%d %b",
+            tickangle: -30,
+            automargin: true,
+            showgrid: true,
+            ...(range ? { range } : {}),
+            ...extra
+        };
+    }
+
     function downloadCsv(filename = "export.csv", rows = []) {
         if (!rows.length) return;
         const columns = unique(rows.flatMap((row) => Object.keys(row || {})));
@@ -217,6 +246,8 @@
         sparklineSvg,
         statusColor,
         toDateString,
+        getSharedDateRange,
+        buildDateAxis,
         downloadCsv,
         downloadJson,
         attachExpandButtons

@@ -169,7 +169,7 @@
         const minDrawdownM = Number.isFinite(Number(options.minDrawdownM)) ? Number(options.minDrawdownM) : 0.05;
         const stableTailCvThreshold = Number.isFinite(Number(options.stableTailCvThreshold)) ? Number(options.stableTailCvThreshold) : 0.2;
         const minStableTailPoints = Number.isFinite(Number(options.minStableTailPoints)) ? Number(options.minStableTailPoints) : 3;
-        const requestedQsMethod = String(options.qsMethod || "preferred");
+        const requestedQsMethod = String(options.qsMethod || "event_median_proxy");
 
         completedEvents.forEach((eventState, index) => {
             const positiveFlowPoints = (eventState.points || []).filter((point) => Number(point.value) > (detectionResult.flow_threshold || 0.1));

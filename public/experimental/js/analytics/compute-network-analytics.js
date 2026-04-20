@@ -97,7 +97,7 @@
                 stressed_site_count: comparisonTable.filter((row) => row.stress_flag).length,
                 stable_tail_capable_site_count: comparisonTable.filter((row) => (row.stable_tail_event_share || 0) > 0).length,
                 short_burst_dominant_site_count: comparisonTable.filter((row) => (row.short_burst_event_share || 0) >= 0.6).length,
-                qs_method_used: comparisonTable[0]?.qs_method_used || options.qsMethod || "preferred",
+                qs_method_used: comparisonTable[0]?.qs_method_used || options.qsMethod || "event_median_proxy",
                 total_observed_volume_m3: round(comparisonTable.reduce((sum, row) => sum + (Number(row.total_volume_m3) || 0), 0)),
                 readiness_counts: readinessCounts,
                 typology_counts: typologyCounts

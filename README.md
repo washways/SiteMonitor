@@ -35,10 +35,13 @@ The hidden experimental review pages now open with the same standard starting po
 - last 14 days
 - automatic loading spinner while telemetry and calculations are running
 - one shared report cache reused across all experimental pages after the first run
+- event median proxy used as the default Q/S selection on the review pages
 
 This default is used because it provides the most practical higher-confidence operational review lane before users switch to advanced options.
 
 The older prototype review pages have now been removed so the workflow stays focused on the current page set only. SonSetLink can still be loaded through the advanced provider option on the remaining experimental pages when needed.
+
+Date selection is set when the cohort is loaded. The retained review pages do not add a second layer of page-level start and end date filters.
 
 ### Which page should I use?
 
@@ -46,8 +49,8 @@ The older prototype review pages have now been removed so the workflow stays foc
 |---------|--------|
 | **Network overview** | Start here for a whole-network view of status, stress, and maintenance priority |
 | **Borehole detail** | Use for one-borehole investigation with a simple summary list, charts, reasons, and uncertainty |
-| **Cross-site comparison** | Compare boreholes side by side to see which sites stand out |
-| **Q/S method comparison** | View a visual plus table showing all sites and the different Q/S methods side by side |
+| **Cross-site comparison** | Compare boreholes side by side, including one combined classification view that joins status and typology |
+| **Q/S method comparison** | View a visual plus table showing all sites and the different Q/S methods side by side, with event median used as the default review baseline |
 | **Field review board** | Build a practical shortlist for site visits and checks |
 
 ---

@@ -30,7 +30,7 @@ The current experimental build does the following:
 5. compute event-level metrics
 6. compute daily summary rows
 7. compute rolling 7-day and 30-day summary rows
-8. compute borehole-level review summaries and typology labels
+9. compute borehole-level review summaries and classification labels
 9. compute cross-site network comparison tables
 10. export review outputs as CSV or JSON
 
@@ -57,6 +57,13 @@ The current placement is safe because the experimental files live entirely under
 - cloudflare-worker/worker.js
 
 ## Main review pages
+
+The retained review workflow now assumes that:
+
+- the cohort date window is chosen once when the report is loaded
+- page-level filters narrow boreholes and categories, but do not add separate start and end date filters
+- event median proxy is the default Q/S shown on the review pages
+- the cross-site comparison page combines status and typology into one classification view for easier scanning
 
 Only the current retained review pages are kept in the final experimental flow:
 

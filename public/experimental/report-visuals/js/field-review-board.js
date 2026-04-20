@@ -37,12 +37,6 @@
         addOptions(el("filterPriority"), rows.map((row) => row.maintenance_priority_label), "All priorities");
         addOptions(el("filterConfidence"), rows.map((row) => row.evidence_confidence_label), "All confidence levels");
         addOptions(el("filterOperationalBucket"), rows.map((row) => row.operational_bucket), "All review buckets");
-
-        const dates = (index.report.daily_rows || []).map((row) => row.date).filter(Boolean).sort();
-        if (dates.length) {
-            if (el("filterStartDate") && !el("filterStartDate").value) el("filterStartDate").value = dates[0];
-            if (el("filterEndDate") && !el("filterEndDate").value) el("filterEndDate").value = dates[dates.length - 1];
-        }
     }
 
     function getFiltered() {

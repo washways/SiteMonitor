@@ -26,6 +26,7 @@ A larger drawdown can indicate that the borehole is working harder to deliver wa
 ### Specific capacity
 A simple performance measure that compares flow to drawdown.
 Higher values usually suggest better delivery for the amount of groundwater response observed.
+On the current review pages, the default displayed Q/S value uses the event median proxy, while the other methods remain available for cross-checking.
 
 ### Resting level
 An estimate of the groundwater level when the borehole is not actively pumping.

@@ -24,19 +24,25 @@
         return rows.find((row) => (row.borehole_id === selected || Utils.boreholeKey(row) === selected) && (!provider || row.provider === provider)) || rows[0] || null;
     }
 
-    function populateBoreholes(index) {
+    function syncQsControls(method) {
+        const selectedMethod = method || reportIndex?.report?.qs_method_selected || el("analysisQsMethod")?.value || "event_median_proxy";
+        if (el("analysisQsMethod")) el("analysisQsMethod").value = selectedMethod;
+        if (el("detailQsMethod")) el("detailQsMethod").value = selectedMethod;
+    }
+
+    function buildSharedAxisLayout(dailyRows = [], rollingRows = []) {
+        return Utils.buildDateAxis([...(dailyRows || []), ...(rollingRows || [])]);
+    }
+
+    function populateBoreholes(index, preferredSelection = "") {
         const target = el("filterBorehole");
         if (!target) return;
         const rows = index.report.health_summary_table || [];
         target.innerHTML = rows.map((row) => `<option value="${Utils.escapeHtml(row.borehole_id)}">${Utils.escapeHtml(row.display_name || row.borehole_id)}</option>`).join("");
-        const selected = currentParams().get("borehole");
+        const selected = preferredSelection || target.value || currentParams().get("borehole");
         if (selected) target.value = selected;
 
-        const dates = (index.report.daily_rows || []).map((row) => row.date).filter(Boolean).sort();
-        if (dates.length) {
-            if (el("filterStartDate") && !el("filterStartDate").value) el("filterStartDate").value = dates[0];
-            if (el("filterEndDate") && !el("filterEndDate").value) el("filterEndDate").value = dates[dates.length - 1];
-        }
+        syncQsControls(index.report.qs_method_selected);
     }
 
     function renderHeader(row, dailyRows = []) {
@@ -46,7 +52,7 @@
             ["Status", row.status_label || row.status_category || "—"],
             ["Readiness", row.analysis_readiness_tier || "—"],
             ["Maintenance priority", row.maintenance_priority_label || "—"],
-            ["Q/S mode", String(row.qs_method_used || "preferred").replace(/_/g, " ")],
+            ["Q/S mode", String(el("detailQsMethod")?.value || reportIndex?.report?.qs_method_selected || row.qs_method_used || "event_median_proxy").replace(/_/g, " ")],
             ["Flow profile", String(row.flow_behavior_profile || "—").replace(/_/g, " ")],
             ["Latest resting level", Utils.formatNumber(row.latest_resting_level_m, 2)],
             ["Latest dynamic level", Utils.formatNumber(row.latest_dynamic_level_m, 2)],
@@ -77,7 +83,7 @@
             </div>`;
     }
 
-    function renderVolumeChart(dailyRows) {
+    function renderVolumeChart(dailyRows, dateAxis) {
         Plotly.newPlot(el("volumeChart"), [
             {
                 type: "bar",
@@ -103,12 +109,13 @@
         ], {
             title: "Daily pumped volume and flow proxy",
             margin: { t: 45, l: 50, r: 60, b: 45 },
+            xaxis: { ...dateAxis },
             yaxis: { title: "Volume" },
             yaxis2: { title: "Flow", overlaying: "y", side: "right" }
         }, { responsive: true, displayModeBar: false });
     }
 
-    function renderGroundwaterChart(dailyRows) {
+    function renderGroundwaterChart(dailyRows, dateAxis) {
         Plotly.newPlot(el("groundwaterChart"), [
             {
                 type: "scatter",
@@ -141,12 +148,13 @@
         ], {
             title: "Resting (static proxy) and dynamic groundwater level traces",
             margin: { t: 45, l: 60, r: 20, b: 45 },
+            xaxis: { ...dateAxis },
             yaxis: { title: "Level" }
         }, { responsive: true, displayModeBar: false });
     }
 
-    function renderPerformanceChart(dailyRows) {
-        const pumpingDays = dailyRows.filter((row) => (Utils.safeNumber(row.event_count) || 0) > 0 || Utils.safeNumber(row.maximum_drawdown_m) !== null);
+    function renderPerformanceChart(dailyRows, dateAxis) {
+        const pumpingDays = dailyRows.filter((row) => (Utils.safeNumber(row.event_count) || 0) > 0 || Utils.safeNumber(row.maximum_drawdown_m) !== null || Utils.safeNumber(row.daily_max_flow_m3h) !== null);
         Plotly.newPlot(el("performanceChart"), [
             {
                 type: "bar",
@@ -184,12 +192,13 @@
         ], {
             title: "Drawdown and selected Q/S on pumping days",
             margin: { t: 45, l: 60, r: 60, b: 45 },
+            xaxis: { ...dateAxis },
             yaxis: { title: "Drawdown", zeroline: true },
             yaxis2: { title: "Specific capacity", overlaying: "y", side: "right", zeroline: true }
         }, { responsive: true, displayModeBar: false });
     }
 
-    function renderRollingChart(rollingRows) {
+    function renderRollingChart(rollingRows, dateAxis) {
         Plotly.newPlot(el("rollingChart"), [
             {
                 type: "scatter",
@@ -223,12 +232,13 @@
         ], {
             title: "Rolling trend view for volume, Q/S support, and stability",
             margin: { t: 45, l: 60, r: 60, b: 45 },
+            xaxis: { ...dateAxis },
             yaxis: { title: "Volume" },
             yaxis2: { title: "Q/S and support share", overlaying: "y", side: "right" }
         }, { responsive: true, displayModeBar: false });
     }
 
-    function renderQualityStrip(dailyRows) {
+    function renderQualityStrip(dailyRows, dateAxis) {
         const points = dailyRows.map((row) => ({
             date: row.date,
             count: (row.daily_quality_flags || []).length,
@@ -251,8 +261,25 @@
         }], {
             title: "Quality-flag strip across time",
             margin: { t: 45, l: 30, r: 30, b: 45 },
+            xaxis: { ...dateAxis },
             yaxis: { visible: false }
         }, { responsive: true, displayModeBar: false });
+    }
+
+    async function applyDetailQsMethod() {
+        if (!reportIndex) return;
+        const selectedMethod = el("detailQsMethod")?.value || "event_median_proxy";
+        const selectedBorehole = el("filterBorehole")?.value || currentParams().get("borehole") || "";
+        if (el("analysisQsMethod")) el("analysisQsMethod").value = selectedMethod;
+        setStatus(`Refreshing the shared analysis using ${selectedMethod.replace(/_/g, " ")}...`);
+        try {
+            reportIndex = await Loader.runLiveAnalysis({ root: document, statusTarget: el("pageStatus") });
+            populateBoreholes(reportIndex, selectedBorehole);
+            syncQsControls(selectedMethod);
+            renderAll();
+        } catch (error) {
+            setStatus(error.message, true);
+        }
     }
 
     function renderReasons(row, dailyRows) {
@@ -324,12 +351,13 @@
             setStatus("No borehole is available in the loaded report.", true);
             return;
         }
+        const dateAxis = buildSharedAxisLayout(dailyRows, rollingRows);
         renderHeader(row, dailyRows);
-        renderVolumeChart(dailyRows);
-        renderGroundwaterChart(dailyRows);
-        renderPerformanceChart(dailyRows);
-        renderRollingChart(rollingRows);
-        renderQualityStrip(dailyRows);
+        renderVolumeChart(dailyRows, dateAxis);
+        renderGroundwaterChart(dailyRows, dateAxis);
+        renderPerformanceChart(dailyRows, dateAxis);
+        renderRollingChart(rollingRows, dateAxis);
+        renderQualityStrip(dailyRows, dateAxis);
         renderReasons(row, dailyRows);
         Utils.attachExpandButtons();
         setStatus(`Rendered detail view for ${row.display_name || row.borehole_id}.`);
@@ -376,6 +404,9 @@
         });
 
         document.querySelectorAll("input[id^='filter'], select[id^='filter']").forEach((node) => node.addEventListener("change", renderAll));
+        el("detailQsMethod")?.addEventListener("change", (event) => syncQsControls(event.target.value));
+        el("analysisQsMethod")?.addEventListener("change", (event) => syncQsControls(event.target.value));
+        el("btnApplyDetailQsMethod")?.addEventListener("click", applyDetailQsMethod);
         el("btnDownloadDetailCsv")?.addEventListener("click", downloadCurrentSelectionCsv);
         el("btnDownloadDetailJson")?.addEventListener("click", downloadCurrentSelectionJson);
     }

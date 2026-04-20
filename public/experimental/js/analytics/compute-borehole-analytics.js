@@ -46,7 +46,9 @@
         return best;
     }
 
-    function determineReadiness({ telemetryDaysObserved, validEventCount, totalEvents }) {
+    function determineReadiness({ telemetryDaysObserved, validEventCount, totalEvents, dataUnreliabilityIndex = 0 }) {
+        if (dataUnreliabilityIndex >= 0.75) return "D";
+        if (dataUnreliabilityIndex >= 0.5) return telemetryDaysObserved >= 10 ? "C" : "D";
         if (telemetryDaysObserved >= 20 && validEventCount >= 5) return "A";
         if (telemetryDaysObserved >= 20 && totalEvents >= 1) return "B";
         if (telemetryDaysObserved >= 10) return "C";
@@ -56,9 +58,9 @@
     function determineTypology(summary) {
         if (summary.analysis_readiness_tier === "D") return "insufficient_data";
         if ((summary.active_day_share || 0) <= 0.02) return "inactive_or_rest_only";
+        if (summary.data_unreliability_index >= 0.45) return "unreliable_data";
         if (summary.stress_flag) return "stressed_review";
         if ((summary.total_volume_m3 || 0) >= 200 || (summary.event_frequency_per_week || 0) >= 3) return "high_use";
-        if (summary.data_unreliability_index >= 0.5) return "unreliable_data";
         if ((summary.intermittency_index || 0) >= 1.5 || (summary.downtime_proxy_share || 0) >= 0.3) return "intermittent";
         return "moderate_use";
     }
@@ -103,7 +105,12 @@
             "noisy_readings_adjusted",
             "noise_adjusted",
             "recovery_not_observed_within_window",
-            "insufficient_post_event_level_support"
+            "insufficient_post_event_level_support",
+            "null_or_invalid_values_removed",
+            "nonpositive_water_level_removed",
+            "sparse_daily_flow_support",
+            "sparse_daily_level_support",
+            "nonpositive_level_screened"
         ]);
         const flaggedDays = orderedDaily.filter((row) => (row.daily_quality_flags || []).some((flag) => dataQualityFlagSet.has(flag))).length;
         const latestRolling = orderedRolling[orderedRolling.length - 1] || {};
@@ -190,7 +197,8 @@
         summary.analysis_readiness_tier = determineReadiness({
             telemetryDaysObserved,
             validEventCount,
-            totalEvents
+            totalEvents,
+            dataUnreliabilityIndex: summary.data_unreliability_index
         });
         summary.typology_group = determineTypology(summary);
         summary.flow_behavior_profile = determineFlowBehaviorProfile(summary);

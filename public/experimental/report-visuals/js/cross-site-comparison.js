@@ -35,11 +35,6 @@
         addOptions(el("filterReadiness"), rows.map((row) => row.analysis_readiness_tier), "All readiness tiers");
         addOptions(el("filterTypology"), rows.map((row) => row.typology_group), "All typologies");
         addOptions(el("filterPriority"), rows.map((row) => row.maintenance_priority_label), "All priorities");
-        const dates = (index.report.daily_rows || []).map((row) => row.date).filter(Boolean).sort();
-        if (dates.length) {
-            if (el("filterStartDate") && !el("filterStartDate").value) el("filterStartDate").value = dates[0];
-            if (el("filterEndDate") && !el("filterEndDate").value) el("filterEndDate").value = dates[dates.length - 1];
-        }
         const metricOptions = Object.entries(METRICS).map(([key, label]) => `<option value="${key}">${Utils.escapeHtml(label)}</option>`).join("");
         el("metricX").innerHTML = metricOptions;
         el("metricY").innerHTML = metricOptions;
@@ -112,18 +107,22 @@
 
     function renderBreakdown(filtered) {
         const rows = filtered.healthRows;
-        const statuses = Utils.unique(rows.map((row) => row.status_label || row.status_category));
-        const statusCounts = statuses.map((status) => rows.filter((row) => (row.status_label || row.status_category) === status).length);
-        const typologies = Utils.unique(rows.map((row) => row.typology_group));
-        const typologyCounts = typologies.map((item) => rows.filter((row) => row.typology_group === item).length);
+        const classifications = Utils.unique(rows.map((row) => {
+            const status = row.status_label || row.status_category || "unknown";
+            const typology = row.typology_group || "unknown";
+            return `${status} / ${typology}`;
+        }));
+        const classificationCounts = classifications.map((label) => rows.filter((row) => {
+            const status = row.status_label || row.status_category || "unknown";
+            const typology = row.typology_group || "unknown";
+            return `${status} / ${typology}` === label;
+        }).length);
         Plotly.newPlot(el("breakdownChart"), [
-            { type: "bar", x: statuses, y: statusCounts, name: "Status" },
-            { type: "bar", x: typologies, y: typologyCounts, name: "Typology" }
+            { type: "bar", x: classifications, y: classificationCounts, name: "Classification", marker: { color: "#2563eb" } }
         ], {
-            title: "Typology and status breakdown",
-            barmode: "group",
-            margin: { t: 45, l: 40, r: 20, b: 90 },
-            xaxis: { tickangle: -25 }
+            title: "Classification breakdown (status / typology)",
+            margin: { t: 45, l: 40, r: 20, b: 110 },
+            xaxis: { tickangle: -35 }
         }, { responsive: true, displayModeBar: false });
     }
 
@@ -231,7 +230,7 @@
             renderAll();
         });
 
-        document.querySelectorAll("input[id^='filter'], select[id^='filter']").forEach((node) => node.addEventListener("change", renderAll));
+        document.querySelectorAll("input[id^='filter'], select[id^='filter'], #metricX, #metricY").forEach((node) => node.addEventListener("change", renderAll));
         el("btnDownloadComparisonCsv")?.addEventListener("click", downloadComparisonCsv);
         el("btnDownloadComparisonJson")?.addEventListener("click", downloadComparisonJson);
     }

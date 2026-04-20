@@ -6,23 +6,21 @@
 
     const el = (id) => document.getElementById(id);
     const METHOD_LABELS = {
-        preferred: "Preferred auto",
-        stable_tail_proxy: "Stable-tail",
         event_median_proxy: "Event median",
+        stable_tail_proxy: "Stable-tail",
         current_proxy: "Last flow",
         late_mean_proxy: "Late mean",
         max_stress_proxy: "Max flow"
     };
     const METHOD_DESCRIPTIONS = {
-        preferred: "Automatic preferred choice from the available event-based Q/S methods.",
+        event_median_proxy: "Median pumping flow during the event divided by maximum drawdown. Default method.",
         stable_tail_proxy: "Late stable pumping flow divided by maximum drawdown. Best when the event tail is well supported.",
-        event_median_proxy: "Median pumping flow during the event divided by maximum drawdown.",
         current_proxy: "Last non-zero flow near the event end divided by end-of-event drawdown.",
         late_mean_proxy: "Average late-event flow divided by maximum drawdown.",
         max_stress_proxy: "Maximum observed event flow divided by maximum observed drawdown. This is the most stress-oriented proxy.",
         spread: "Difference between the highest and lowest available Q/S method values for that site. Larger spread means lower method agreement."
     };
-    const METHOD_ORDER = ["preferred", "stable_tail_proxy", "event_median_proxy", "current_proxy", "late_mean_proxy", "max_stress_proxy"];
+    const METHOD_ORDER = ["event_median_proxy", "stable_tail_proxy", "current_proxy", "late_mean_proxy", "max_stress_proxy"];
 
     function setStatus(message, isError = false) {
         Loader.setStatus(el("pageStatus"), message, isError);
@@ -70,9 +68,8 @@
                 maintenance_priority_label: summary.maintenance_priority_label || "—",
                 summary,
                 valid_event_count: 0,
-                preferred: [],
-                stable_tail_proxy: [],
                 event_median_proxy: [],
+                stable_tail_proxy: [],
                 current_proxy: [],
                 late_mean_proxy: [],
                 max_stress_proxy: []
@@ -93,39 +90,34 @@
                     maintenance_priority_label: summary.maintenance_priority_label || "—",
                     summary,
                     valid_event_count: 0,
-                    preferred: [],
-                    stable_tail_proxy: [],
                     event_median_proxy: [],
+                    stable_tail_proxy: [],
                     current_proxy: [],
                     late_mean_proxy: [],
                     max_stress_proxy: []
                 });
             }
             const target = grouped.get(key);
-            if (Number.isFinite(Number(eventRow.preferred_specific_capacity_m3h_per_m))) {
-                target.preferred.push(Number(eventRow.preferred_specific_capacity_m3h_per_m));
-            }
             const candidates = eventRow.specific_capacity_candidates || {};
-            METHOD_ORDER.slice(1).forEach((method) => {
+            METHOD_ORDER.forEach((method) => {
                 if (Number.isFinite(Number(candidates[method]))) {
                     target[method].push(Number(candidates[method]));
                 }
             });
-            if (Number.isFinite(Number(eventRow.selected_specific_capacity_m3h_per_m || eventRow.preferred_specific_capacity_m3h_per_m))) {
+            if (Number.isFinite(Number(eventRow.selected_specific_capacity_m3h_per_m || candidates.event_median_proxy))) {
                 target.valid_event_count += 1;
             }
         });
 
         return [...grouped.values()].map((row) => {
             const summary = row.summary || {};
-            const preferredAuto = median(row.preferred);
-            const stableTail = median(row.stable_tail_proxy);
             const eventMedian = median(row.event_median_proxy);
+            const stableTail = median(row.stable_tail_proxy);
             const current = median(row.current_proxy);
             const lateMean = median(row.late_mean_proxy);
             const maxFlow = median(row.max_stress_proxy);
-            const fallbackPreferred = Number.isFinite(Number(summary.median_valid_specific_capacity_m3h_per_m)) ? Number(summary.median_valid_specific_capacity_m3h_per_m) : null;
-            const methodValues = [preferredAuto ?? fallbackPreferred, stableTail, eventMedian, current, lateMean, maxFlow].filter((value) => Number.isFinite(Number(value)));
+            const fallbackQs = Number.isFinite(Number(summary.median_valid_specific_capacity_m3h_per_m)) ? Number(summary.median_valid_specific_capacity_m3h_per_m) : null;
+            const methodValues = [eventMedian ?? fallbackQs, stableTail, current, lateMean, maxFlow].filter((value) => Number.isFinite(Number(value)));
             const spread = methodValues.length > 1 ? Math.max(...methodValues) - Math.min(...methodValues) : null;
             const supportDays = (filtered.dailyRows || []).filter((item) => Utils.boreholeKey(item) === row.key).reduce((sum, item) => sum + (Number(item.event_count) || 0), 0);
             return {
@@ -135,9 +127,8 @@
                 status_label: row.status_label || "—",
                 maintenance_priority_label: row.maintenance_priority_label || "—",
                 valid_event_count: row.valid_event_count || supportDays,
-                preferred_auto_qs: preferredAuto ?? fallbackPreferred,
+                event_median_qs: eventMedian ?? fallbackQs,
                 stable_tail_qs: stableTail,
-                event_median_qs: eventMedian,
                 current_proxy_qs: current,
                 late_mean_qs: lateMean,
                 max_flow_qs: maxFlow,
@@ -165,9 +156,8 @@
         if (!window.Plotly || !heatmapTarget || !spreadTarget) return;
 
         const columns = [
-            { label: METHOD_LABELS.preferred, key: "preferred_auto_qs" },
-            { label: METHOD_LABELS.stable_tail_proxy, key: "stable_tail_qs" },
             { label: METHOD_LABELS.event_median_proxy, key: "event_median_qs" },
+            { label: METHOD_LABELS.stable_tail_proxy, key: "stable_tail_qs" },
             { label: METHOD_LABELS.current_proxy, key: "current_proxy_qs" },
             { label: METHOD_LABELS.late_mean_proxy, key: "late_mean_qs" },
             { label: METHOD_LABELS.max_stress_proxy, key: "max_flow_qs" }
@@ -224,9 +214,8 @@
                         <th>Borehole</th>
                         <th>Status</th>
                         <th>Event support</th>
-                        <th>${helpHeader(METHOD_LABELS.preferred, METHOD_DESCRIPTIONS.preferred)}</th>
-                        <th>${helpHeader(METHOD_LABELS.stable_tail_proxy, METHOD_DESCRIPTIONS.stable_tail_proxy)}</th>
                         <th>${helpHeader(METHOD_LABELS.event_median_proxy, METHOD_DESCRIPTIONS.event_median_proxy)}</th>
+                        <th>${helpHeader(METHOD_LABELS.stable_tail_proxy, METHOD_DESCRIPTIONS.stable_tail_proxy)}</th>
                         <th>${helpHeader(METHOD_LABELS.current_proxy, METHOD_DESCRIPTIONS.current_proxy)}</th>
                         <th>${helpHeader(METHOD_LABELS.late_mean_proxy, METHOD_DESCRIPTIONS.late_mean_proxy)}</th>
                         <th>${helpHeader(METHOD_LABELS.max_stress_proxy, METHOD_DESCRIPTIONS.max_stress_proxy)}</th>
@@ -239,9 +228,8 @@
                             <td>${Utils.escapeHtml(row.display_name || row.borehole_id)}</td>
                             <td>${Utils.escapeHtml(row.status_label || "—")}</td>
                             <td>${Utils.escapeHtml(String(row.valid_event_count || 0))}</td>
-                            <td>${Utils.formatNumber(row.preferred_auto_qs, 3)}</td>
-                            <td>${Utils.formatNumber(row.stable_tail_qs, 3)}</td>
                             <td>${Utils.formatNumber(row.event_median_qs, 3)}</td>
+                            <td>${Utils.formatNumber(row.stable_tail_qs, 3)}</td>
                             <td>${Utils.formatNumber(row.current_proxy_qs, 3)}</td>
                             <td>${Utils.formatNumber(row.late_mean_qs, 3)}</td>
                             <td>${Utils.formatNumber(row.max_flow_qs, 3)}</td>

@@ -22,6 +22,7 @@ The visualization layer uses the current report schema, including:
 - readiness tier
 - typology group
 - status labels
+- combined cross-site classification label
 - interpretations
 - quality flags
 
@@ -49,9 +50,13 @@ The visualization layer is isolated because:
 
 These pages now support a direct live workflow:
 
-- set provider, date window, and cohort limits on the page itself
+- set provider, date window, and cohort limits when loading the cohort report
 - run the existing telemetry analytics pipeline directly with no upload required
 - move between pages while reusing the current cohort report from browser storage
+
+After the cohort is loaded, the retained review pages use borehole and category filters only. They do not add separate start and end date filters on each page.
+
+The default Q/S shown across the review pages is now the event median proxy. The dedicated Q/S comparison page keeps the other candidate methods visible for cross-checking.
 
 Optional saved-report loading is still available for review, but it is no longer required.
 

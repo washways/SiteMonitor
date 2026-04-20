@@ -8,6 +8,8 @@ They sit on top of the hidden analytics outputs and are meant to support review,
 
 This visualization layer reads the **existing analytics report JSON directly** and adds only a thin transformation layer for charting and filtering.
 
+The pages reuse the selected cohort window from the loaded report. They do not apply a second layer of start and end date filters inside each page.
+
 ## What is reused directly from the report
 
 The pages use the existing report structures, including:
@@ -34,18 +36,21 @@ The pages use the existing report structures, including:
 
 ### Borehole detail
 - Daily pumped volume comes from the daily rows exactly as exported.
+- Flow-support charts can still use daily raw positive-flow support when a day has usable telemetry but no complete event-derived flow statistic.
 - Groundwater level traces use daily minimum, daily maximum, and estimated resting level directly from the report.
 - Drawdown and specific-capacity charts preserve nulls, negative drawdown values, zero groundwater values, and flagged days.
+- Rolling Q/S support can use daily Q/S summaries when event-only support is too sparse.
 - A quality-strip view shows daily flags without suppressing uncertainty.
 
 ### Cross-site comparison
 - The heatmap and scatter views use the existing ranked and health-summary metrics.
 - Ranked tables expose stress, downtime, decline, unreliability, and best specific capacity separately.
-- Typology and status are always shown as distinct concepts.
+- The classification breakdown now combines status and typology into one clearer review label for faster scanning.
 
 ### Q/S method comparison
 - A heatmap now shows the different Q/S values by site and method in one compact view.
 - A spread bar chart highlights where the method outputs differ most strongly.
+- Event median proxy is the default review baseline across the retained pages.
 - The table underneath remains the primary auditable record for exact values.
 
 ### Field review board

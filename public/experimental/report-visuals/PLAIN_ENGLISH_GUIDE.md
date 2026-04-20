@@ -13,6 +13,8 @@ You do not need to upload data first. The experimental pages share one cached co
 
 By default, the hidden review pages start with all available DCP boreholes in Malawi over the last 14 days. This is used as the standard opening view because it is the higher-confidence routine review lane.
 
+That date window is chosen when the cohort is loaded. The retained review pages do not add a second set of page-level start and end date filters afterward.
+
 ---
 
 ## Quick start
@@ -21,7 +23,7 @@ By default, the hidden review pages start with all available DCP boreholes in Ma
 2. Wait for the loading spinner if the page is pulling fresh telemetry.
 3. Start with the default DCP Malawi 14-day view.
 4. Open the advanced options only if you need a different provider or tuning.
-5. Use the filters to narrow the list.
+5. Use the page filters to narrow boreholes, labels, and categories.
 6. Click a borehole name to open the detailed page.
 7. Download CSV or JSON if you want to share or review results offline.
 
@@ -58,6 +60,8 @@ It helps answer:
 - which ones have the best supported specific-capacity values
 - which ones deserve a closer look first
 
+The classification chart on this page now combines status and typology into one label so the difference is easier to read quickly.
+
 ### Q/S method comparison
 Use this when you want to compare the different Q/S calculation approaches for the same sites.
 
@@ -67,6 +71,8 @@ It helps answer:
 - whether the chosen method is close to the other candidates
 
 The page is now intentionally simple: a small visual summary plus one list of all loaded sites with separate columns for each method. Hover over the column headings for a plain-language explanation.
+
+Across the retained review pages, the default displayed Q/S method is now the event median proxy.
 
 Only the current review pages are kept in the final workflow so older prototype pages do not clutter the navigation.
 

@@ -32,11 +32,15 @@
     function sanitizeSeriesValues(parameter, points, qc, options = {}) {
         const maxFlowM3h = Number.isFinite(Number(options.maxFlowM3h)) ? Number(options.maxFlowM3h) : 250;
         const maxReasonableLevelM = Number.isFinite(Number(options.maxReasonableLevelM)) ? Number(options.maxReasonableLevelM) : 500;
+        const minPositiveLevelM = Number.isFinite(Number(options.minPositiveLevelM)) ? Number(options.minPositiveLevelM) : 0.01;
         const output = [];
 
         for (const point of points) {
             const normalized = Schema.createTelemetryPoint(point);
-            if (!Number.isFinite(normalized.timestamp_ms) || normalized.value === null) continue;
+            if (!Number.isFinite(normalized.timestamp_ms) || normalized.value === null) {
+                qc.null_value_count += 1;
+                continue;
+            }
 
             const next = { ...normalized, flags: [...(normalized.flags || [])] };
             if (parameter === Schema.PARAMETERS.FLOW && next.value < 0) {
@@ -49,6 +53,10 @@
                 next.flags = Schema.uniqueFlags([...(next.flags || []), "extreme_flow_reading"]);
                 qc.extreme_value_count += 1;
             }
+            if (parameter === Schema.PARAMETERS.WATER_LEVEL && next.value <= minPositiveLevelM) {
+                qc.suspicious_level_count += 1;
+                continue;
+            }
             if (parameter === Schema.PARAMETERS.WATER_LEVEL && Math.abs(next.value) > maxReasonableLevelM) {
                 qc.dropped_outlier_count += 1;
                 continue;
@@ -56,8 +64,14 @@
             output.push(next);
         }
 
+        if (qc.null_value_count > 0) {
+            QcFlags.addFlag(qc.flags, "null_or_invalid_values_removed", `${qc.null_value_count} null or invalid telemetry readings were removed during cleaning.`, "warn");
+        }
         if (qc.negative_flow_clamped_count > 0) {
             QcFlags.addFlag(qc.flags, "negative_flow_clamped", `${qc.negative_flow_clamped_count} negative flow readings were clamped to zero.`, "warn");
+        }
+        if (qc.suspicious_level_count > 0) {
+            QcFlags.addFlag(qc.flags, "nonpositive_water_level_removed", `${qc.suspicious_level_count} non-positive groundwater-level readings were screened out.`, "warn");
         }
         if (qc.dropped_outlier_count > 0) {
             QcFlags.addFlag(qc.flags, "outlier_values_removed", `${qc.dropped_outlier_count} implausible readings were removed during cleaning.`, "warn");
@@ -169,6 +183,8 @@
             negative_flow_clamped_count: 0,
             dropped_outlier_count: 0,
             extreme_value_count: 0,
+            null_value_count: 0,
+            suspicious_level_count: 0,
             flags: []
         };
 

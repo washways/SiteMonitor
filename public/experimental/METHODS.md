@@ -219,18 +219,23 @@ In the current code, the minimum drawdown guard defaults to 0.05 m.
 
 If drawdown is missing, too small, or otherwise unsuitable, the relevant Q/S value is set to null and flagged instead of being forced.
 
-### 6.7 Preferred auto-selection
-The current research implementation now supports a **preferred auto** mode that tries to choose the most supported candidate for each event.
+### 6.7 Default review selection
+The current review pages now use **event median proxy** as the default displayed Q/S method.
 
-The preference order is currently:
+This choice is deliberate:
+
+1. it is easy to explain
+2. it is stable enough for routine review
+3. it avoids hiding the other candidates behind an auto-selection rule
+
+The other candidate methods remain available for comparison:
 
 1. stable-tail proxy
-2. event median proxy
-3. current proxy
-4. late mean proxy
-5. max stress proxy
+2. current proxy
+3. late mean proxy
+4. max stress proxy
 
-This gives the pages a more pump-test-like option where the telemetry supports it, while still preserving continuity with the earlier operational proxy.
+The Q/S comparison page keeps all methods visible side by side so method spread can still be inspected directly.
 
 ---
 
@@ -252,6 +257,8 @@ The purpose of these flags is to preserve uncertainty and prevent over-interpret
 ## 8. Daily summary calculations
 
 Daily summaries are built from both cleaned telemetry and completed event outputs.
+
+When a day has usable positive flow telemetry but event segmentation is too sparse to support a full event-derived flow statistic, the daily maximum-flow proxy can fall back to the raw positive-flow points for that day. This keeps the daily flow-support charts visible without pretending that a full event interpretation was available.
 
 ### 8.1 Daily pumped volume
 For each day, the code adds the contribution from every positive-flow point:
