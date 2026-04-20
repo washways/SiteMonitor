@@ -271,6 +271,10 @@
         );
     }
 
+    function isNoTelemetryProcessedError(error) {
+        return /No telemetry could be processed for the selected cohort/i.test(String(error?.message || error || ""));
+    }
+
     function buildDefaultAnalysisSettings() {
         const params = getQueryParams();
         const today = new Date();
@@ -597,7 +601,35 @@
                     }
                     setStatus(statusTarget, "A previous cohort load lock expired. Starting a fresh shared analysis now.");
                 }
-                return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: expectedSettings });
+
+                try {
+                    return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: expectedSettings });
+                } catch (error) {
+                    if (!isNoTelemetryProcessedError(error)) {
+                        throw error;
+                    }
+
+                    setStatus(statusTarget, "The first shared cohort attempt returned no telemetry. Checking for a reusable shared report and retrying automatically...");
+
+                    const cachedReport = safeStorageGet(requestedProvider);
+                    if (reportMatchesRequestedDefaultCohort(cachedReport, expectedSettings)) {
+                        setStatus(statusTarget, "Recovered by reusing the shared cohort report already loaded in browser storage.");
+                        return buildIndex(cachedReport);
+                    }
+
+                    const sharedReport = await waitForSharedReport({
+                        statusTarget,
+                        provider: requestedProvider,
+                        root: options.root || document,
+                        timeoutMs: 15000
+                    }).catch(() => null);
+                    if (sharedReport) {
+                        return sharedReport;
+                    }
+
+                    setStatus(statusTarget, "Retrying the shared cohort load automatically...");
+                    return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: expectedSettings });
+                }
             }
 
             if (!report) {
