@@ -7,7 +7,7 @@
     global.SiteMonitorExperimental.BaseAdapter = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function (global) {
     const DEFAULT_PROXY_BASE = "https://wash-proxy.washways1.workers.dev";
-    const REQUEST_TIMEOUT_MS = 30000;
+    const REQUEST_TIMEOUT_MS = 60000;
 
     class BaseTelemetryAdapter {
         constructor({ id, label, provider }) {

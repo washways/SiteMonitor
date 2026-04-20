@@ -465,7 +465,7 @@
             const boreholeRows = [];
             const eventRows = [];
             const sourceReports = [];
-            const batchSize = filterQuery ? 1 : (settings.provider === "SonSetLink" ? 3 : 4);
+            const batchSize = filterQuery ? 1 : (settings.provider === "SonSetLink" ? 2 : 1);
 
             for (let i = 0; i < selected.length; i += batchSize) {
                 const batch = selected.slice(i, i + batchSize);
