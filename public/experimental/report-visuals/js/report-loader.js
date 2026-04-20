@@ -52,10 +52,21 @@
         return normalizeReport(await response.json());
     }
 
+    function compactReportForStorage(report = {}) {
+        const normalized = normalizeReport(report);
+        return {
+            ...normalized,
+            source_reports: [],
+            cache_variant: "compact_browser_storage"
+        };
+    }
+
     function safeStorageSet(report, provider = report?.provider) {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(report));
-            localStorage.setItem(scopedKey(STORAGE_KEY, provider), JSON.stringify(report));
+            const compactReport = compactReportForStorage(report);
+            const serialized = JSON.stringify(compactReport);
+            localStorage.setItem(STORAGE_KEY, serialized);
+            localStorage.setItem(scopedKey(STORAGE_KEY, provider), serialized);
         } catch (error) {
             // ignore quota issues in the experimental layer
         }
