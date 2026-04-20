@@ -32,7 +32,7 @@ A **static, browser-based dashboard** for monitoring solar-powered and hand-pump
 The hidden experimental review pages now open with the same standard starting point:
 
 - all available DCP boreholes in Malawi
-- last 14 days
+- last 6 weeks (42 days)
 - automatic loading spinner while telemetry and calculations are running
 - one shared report cache reused across all experimental pages after the first run
 - event median proxy used as the default Q/S selection on the review pages

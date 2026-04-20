@@ -17,7 +17,7 @@
     const DEFAULT_MAX_SOURCES = null;
     const MAX_SOURCE_LIMIT = 500;
     const DEFAULT_PROVIDER = "DCP";
-    const DEFAULT_LOOKBACK_DAYS = 14;
+    const DEFAULT_LOOKBACK_DAYS = 42;
     const DEFAULT_COUNTRY_SCOPE = "Malawi";
     const QS_METHOD_LABELS = {
         event_median_proxy: "Event median / max drawdown",
@@ -247,6 +247,30 @@
         return Math.min(parsed, MAX_SOURCE_LIMIT);
     }
 
+    function getSettingsDateRange(settings = {}) {
+        return {
+            startDate: Utils.toDateString(settings.window?.start || settings.startDate),
+            endDate: Utils.toDateString(settings.window?.end || settings.endDate)
+        };
+    }
+
+    function reportMatchesRequestedDefaultCohort(report, settings = {}) {
+        if (!report) return false;
+
+        const { startDate, endDate } = getSettingsDateRange(settings);
+        const reportStartDate = Utils.toDateString(report.date_window?.start);
+        const reportEndDate = Utils.toDateString(report.date_window?.end);
+
+        return (
+            report.cohort_request?.load_scope === "full_available_cohort"
+            && (report.cohort_request?.provider_scope || report.provider) === (settings.provider || DEFAULT_PROVIDER)
+            && report.cohort_request?.country_scope === DEFAULT_COUNTRY_SCOPE
+            && String(report.cohort_request?.requested_max_sources || "all_available") === "all_available"
+            && reportStartDate === startDate
+            && reportEndDate === endDate
+        );
+    }
+
     function buildDefaultAnalysisSettings() {
         const params = getQueryParams();
         const today = new Date();
@@ -465,7 +489,7 @@
                     start: settings.window.start.toISOString(),
                     end: settings.window.end.toISOString()
                 },
-                analytics_note: `Experimental isolated analytics layer using real normalized telemetry and event outputs for ${DEFAULT_COUNTRY_SCOPE} sites over the last ${DEFAULT_LOOKBACK_DAYS} days by default. Active Q/S mode: ${formatQsMethodLabel(settings.qsMethod)}.`,
+                analytics_note: `Experimental isolated analytics layer using real normalized telemetry and event outputs for ${DEFAULT_COUNTRY_SCOPE} sites over the last 6 weeks (${DEFAULT_LOOKBACK_DAYS} days) by default. Active Q/S mode: ${formatQsMethodLabel(settings.qsMethod)}.`,
                 qs_method_selected: settings.qsMethod,
                 qs_method_label: formatQsMethodLabel(settings.qsMethod),
                 event_rows: eventRows,
@@ -538,7 +562,8 @@
     async function loadReport(options = {}) {
         const statusTarget = options.statusTarget || null;
         const requestedUrl = options.url || getQueryReportUrl() || options.defaultUrl || "";
-        const requestedProvider = options.provider || options.root?.getElementById?.("analysisProvider")?.value || buildDefaultAnalysisSettings().provider || DEFAULT_PROVIDER;
+        const expectedSettings = options.settings || buildDefaultAnalysisSettings();
+        const requestedProvider = options.provider || options.root?.getElementById?.("analysisProvider")?.value || expectedSettings.provider || DEFAULT_PROVIDER;
 
         try {
             setLoading(options.root || document, true, "Loading report data...");
@@ -555,11 +580,12 @@
 
             const reportMissingMethodSupport = !Array.isArray(report?.event_rows)
                 || (!report?.event_rows?.length && (report?.health_summary_table || []).some((row) => (Number(row.active_day_share) || 0) > 0));
+            const reportMatchesDefaultCohort = reportMatchesRequestedDefaultCohort(report, expectedSettings);
 
             const shouldSeedFullCohort = !!(
                 options.runLiveIfMissing
                 && !requestedUrl
-                && (!report || report.cohort_request?.load_scope !== "full_available_cohort" || reportMissingMethodSupport)
+                && (!report || !reportMatchesDefaultCohort || reportMissingMethodSupport)
             );
 
             if (shouldSeedFullCohort) {
@@ -571,7 +597,7 @@
                     }
                     setStatus(statusTarget, "A previous cohort load lock expired. Starting a fresh shared analysis now.");
                 }
-                return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: options.settings });
+                return await runLiveAnalysis({ root: options.root || document, statusTarget, settings: expectedSettings });
             }
 
             if (!report) {

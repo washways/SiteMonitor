@@ -11,7 +11,7 @@ It is not meant to replace field judgement.
 
 You do not need to upload data first. The experimental pages share one cached cohort analysis, so once the data are loaded on one page you can switch between the other pages without rerunning.
 
-By default, the hidden review pages start with all available DCP boreholes in Malawi over the last 14 days. This is used as the standard opening view because it is the higher-confidence routine review lane.
+By default, the hidden review pages start with all available DCP boreholes in Malawi over the last 6 weeks (42 days). This is used as the standard opening view because it is the higher-confidence routine review lane.
 
 That date window is chosen when the cohort is loaded. The retained review pages do not add a second set of page-level start and end date filters afterward.
 
@@ -21,7 +21,7 @@ That date window is chosen when the cohort is loaded. The retained review pages 
 
 1. Open one of the hidden review pages.
 2. Wait for the loading spinner if the page is pulling fresh telemetry.
-3. Start with the default DCP Malawi 14-day view.
+3. Start with the default DCP Malawi 6-week view.
 4. Open the advanced options only if you need a different provider or tuning.
 5. Use the page filters to narrow boreholes, labels, and categories.
 6. Click a borehole name to open the detailed page.

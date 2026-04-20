@@ -16,7 +16,7 @@ The outputs are intended for:
 The standard starting workflow on the hidden review pages is now:
 
 - all available DCP boreholes in Malawi
-- last 14 days
+- last 6 weeks (42 days)
 - loading spinner shown while telemetry and calculations are running
 - shared cached report reused across all the experimental review pages once loaded
 
@@ -68,7 +68,7 @@ To reduce confusion, the separate SonSetLink screening page has been retired fro
 
 Where the code creates approximate or screening values, those flags are intentionally preserved in the outputs.
 
-The current default opening workflow on the hidden review pages is DCP for Malawi over the last 14 days. This is intended to give users a fast and higher-confidence starting point before they open advanced options.
+The current default opening workflow on the hidden review pages is DCP for Malawi over the last 6 weeks (42 days). This is intended to give users a broader higher-confidence starting point before they open advanced options.
 
 ---
 
