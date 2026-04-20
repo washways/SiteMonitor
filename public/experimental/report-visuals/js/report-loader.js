@@ -168,6 +168,10 @@
         };
     }
 
+    function getReportLoadedCount(report = {}) {
+        return report.network_summary?.site_count || report.health_summary_table?.length || report.borehole_summary_table?.length || 0;
+    }
+
     function ensureLoadingOverlay(root = document) {
         const doc = root?.ownerDocument || root || document;
         let overlay = doc.getElementById("pageLoadingOverlay");
@@ -271,12 +275,16 @@
         const { startDate, endDate } = getSettingsDateRange(settings);
         const reportStartDate = Utils.toDateString(report.date_window?.start);
         const reportEndDate = Utils.toDateString(report.date_window?.end);
+        const loadedCount = getReportLoadedCount(report);
 
         return (
             report.cohort_request?.load_scope === "full_available_cohort"
             && (report.cohort_request?.provider_scope || report.provider) === (settings.provider || DEFAULT_PROVIDER)
             && report.cohort_request?.country_scope === DEFAULT_COUNTRY_SCOPE
             && String(report.cohort_request?.requested_max_sources || "all_available") === "all_available"
+            && !String(report.cohort_request?.borehole_filter || "").trim()
+            && !String(settings.boreholeFilter || "").trim()
+            && loadedCount > 1
             && reportStartDate === startDate
             && reportEndDate === endDate
         );
@@ -421,18 +429,24 @@
             setLoading(root, true, `Loading ${settings.provider} ${DEFAULT_COUNTRY_SCOPE} data and running calculations...`);
             setStatus(statusTarget, "Loading real telemetry sources for the cohort analysis...");
             safeSettingsSet(settings);
+            const filterQuery = String(settings.boreholeFilter || "").trim().toLowerCase();
+            const loadScope = filterQuery
+                ? "borehole_filtered_subset"
+                : (settings.maxSources ? "limited_subset" : "full_available_cohort");
+
             safeRunStateSet({
                 status: "running",
                 run_id: runId,
                 started_at: new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 provider: settings.provider,
-                requested_max_sources: settings.maxSources || "all_available"
+                requested_max_sources: settings.maxSources || "all_available",
+                borehole_filter: settings.boreholeFilter || "",
+                load_scope: loadScope
             }, settings.provider);
 
             const allSources = await listSourcesForProvider(settings, { dcp, ssl });
             const malawiSources = allSources.filter((source) => isMalawiSource(source));
-            const filterQuery = String(settings.boreholeFilter || "").trim().toLowerCase();
             const filteredSources = filterQuery ? malawiSources.filter((source) => matchesBoreholeFilter(source, filterQuery)) : malawiSources;
             const selected = [...filteredSources]
                 .sort((a, b) => {
@@ -479,6 +493,8 @@
                     updated_at: new Date().toISOString(),
                     provider: settings.provider,
                     requested_max_sources: settings.maxSources || "all_available",
+                    borehole_filter: settings.boreholeFilter || "",
+                    load_scope: loadScope,
                     processed_source_count: Math.min(i + batchSize, selected.length),
                     selected_source_count: selected.length
                 }, settings.provider);
@@ -496,9 +512,10 @@
                 provider: settings.provider,
                 cohort_request: {
                     requested_max_sources: settings.maxSources || "all_available",
-                    load_scope: settings.maxSources ? "limited_subset" : "full_available_cohort",
+                    load_scope: loadScope,
                     provider_scope: settings.provider,
-                    country_scope: DEFAULT_COUNTRY_SCOPE
+                    country_scope: DEFAULT_COUNTRY_SCOPE,
+                    borehole_filter: settings.boreholeFilter || ""
                 },
                 date_window: {
                     start: settings.window.start.toISOString(),
@@ -523,9 +540,13 @@
                 completed_at: new Date().toISOString(),
                 provider: settings.provider,
                 requested_max_sources: settings.maxSources || "all_available",
+                borehole_filter: settings.boreholeFilter || "",
+                load_scope: loadScope,
                 loaded_site_count: boreholeRows.length
             }, settings.provider);
-            const scopeLabel = settings.maxSources ? `${settings.maxSources}-source ${DEFAULT_COUNTRY_SCOPE} subset` : `all available DCP boreholes in ${DEFAULT_COUNTRY_SCOPE}`;
+            const scopeLabel = filterQuery
+                ? `borehole-filtered ${DEFAULT_COUNTRY_SCOPE} subset`
+                : (settings.maxSources ? `${settings.maxSources}-source ${DEFAULT_COUNTRY_SCOPE} subset` : `all available DCP boreholes in ${DEFAULT_COUNTRY_SCOPE}`);
             setStatus(statusTarget, `Completed ${scopeLabel} analysis for ${boreholeRows.length} sources using ${formatQsMethodLabel(settings.qsMethod)}.`);
             return buildIndex(report);
         } catch (error) {
@@ -536,7 +557,9 @@
                 message,
                 failed_at: new Date().toISOString(),
                 provider: settings.provider,
-                requested_max_sources: settings.maxSources || "all_available"
+                requested_max_sources: settings.maxSources || "all_available",
+                borehole_filter: settings.boreholeFilter || "",
+                load_scope: String(settings.boreholeFilter || "").trim() ? "borehole_filtered_subset" : (settings.maxSources ? "limited_subset" : "full_available_cohort")
             }, settings.provider);
             throw new Error(message);
         } finally {
@@ -548,14 +571,15 @@
         const statusTarget = options.statusTarget || null;
         const timeoutMs = options.timeoutMs || 120000;
         const provider = options.provider || "shared";
+        const expectedSettings = options.settings || buildDefaultAnalysisSettings();
         const startMs = Date.now();
         setLoading(options.root || document, true, "A full cohort load is already running in another page. Waiting to reuse it here...");
         setStatus(statusTarget, "A full cohort load is already running in another page. Waiting to reuse it here...");
 
         while ((Date.now() - startMs) < timeoutMs) {
             const report = safeStorageGet(provider);
-            if (report?.cohort_request?.load_scope === "full_available_cohort") {
-                const loadedCount = report.network_summary?.site_count || report.health_summary_table?.length || report.borehole_summary_table?.length || 0;
+            if (reportMatchesRequestedDefaultCohort(report, expectedSettings)) {
+                const loadedCount = getReportLoadedCount(report);
                 setStatus(statusTarget, `Loaded cached cohort for ${loadedCount} boreholes from browser storage. Switching pages will reuse this same report.`);
                 return buildIndex(report);
             }
@@ -606,7 +630,7 @@
             if (shouldSeedFullCohort) {
                 const runState = getActiveRunState(requestedProvider);
                 if (runState?.status === "running") {
-                    const sharedReport = await waitForSharedReport({ statusTarget, provider: requestedProvider, root: options.root || document });
+                    const sharedReport = await waitForSharedReport({ statusTarget, provider: requestedProvider, root: options.root || document, settings: expectedSettings });
                     if (sharedReport) {
                         return sharedReport;
                     }
@@ -632,6 +656,7 @@
                         statusTarget,
                         provider: requestedProvider,
                         root: options.root || document,
+                        settings: expectedSettings,
                         timeoutMs: 15000
                     }).catch(() => null);
                     if (sharedReport) {
@@ -648,7 +673,7 @@
             }
 
             safeStorageSet(report, requestedProvider);
-            const loadedCount = report.network_summary?.site_count || report.health_summary_table?.length || report.borehole_summary_table?.length || 0;
+            const loadedCount = getReportLoadedCount(report);
             const sourceMessage = sourceLabel === "browser storage"
                 ? `Loaded cached cohort for ${loadedCount} boreholes from browser storage. All experimental pages will reuse this same report until you rerun the analysis.`
                 : `Loaded report successfully from ${sourceLabel}.`;
