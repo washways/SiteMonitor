@@ -416,7 +416,7 @@
         });
 
         document.querySelectorAll("input[id^='filter'], select[id^='filter']").forEach((node) => node.addEventListener("change", renderAll));
-        el("detailQsMethod")?.addEventListener("change", (event) => syncQsControls(event.target.value));
+        el("detailQsMethod")?.addEventListener("change", () => applyDetailQsMethod());
         el("analysisQsMethod")?.addEventListener("change", (event) => syncQsControls(event.target.value));
         el("btnApplyDetailQsMethod")?.addEventListener("click", applyDetailQsMethod);
         el("btnDownloadDetailCsv")?.addEventListener("click", downloadCurrentSelectionCsv);

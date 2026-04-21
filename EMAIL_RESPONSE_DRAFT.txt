@@ -1,0 +1,59 @@
+Subject: Updated borehole review pages and links
+
+Hello,
+
+The experimental borehole review pages have now been streamlined and improved.
+
+The broader aim is to explore whether production borehole data can give us a more dynamic view of aquifer behaviour in places where dedicated real-time observation monitoring has often not been sustained because of cost constraints.
+
+Key updates:
+- older prototype pages have been removed
+- the remaining review pages share one default DCP Malawi 14-day analysis
+- the borehole detail page now uses a simpler summary layout
+- the Q/S method page now includes both a visual summary and a side-by-side method table
+- the field review board remains available for practical follow-up planning
+
+Additional notes
+
+Qs dashboard
+- I no longer rely on one flow value only. The Q/S review now compares preferred auto, stable-tail, event median, last flow, late mean, and max-flow options against drawdown.
+- Final flow divided by drawdown is treated as a screening value only, not a formal pump-test result.
+- The event pattern is now shown more clearly, which is more useful for tank-filling style pump operation.
+- If reliable pump-curve, installation, and pump-depth metadata are available later, they can be added as a stronger reference.
+- The workflow now supports borehole-first review so users can narrow to the borehole of interest before going deeper.
+- Static and dynamic level context are shown more clearly in the review layer. Pump depth and original drill-time Q/S can be added later once the metadata are stronger.
+- Flow context and linked hover information are now clearer on the detailed review charts.
+
+WASH dashboard
+- The depth trend graph is, in simple terms, the resting or near-static level trend through time.
+- A matching dynamic-level view is now included in the review layer.
+- The review charts can now be expanded.
+- Yearly graphs and climate comparison remain sensible later additions once longer time series are in place.
+- CSV and JSON download options are available on the review pages.
+- Static and dynamic level comparison across boreholes is now clearer in the retained comparison views.
+- Conversion to metres below surface should wait until elevation and pump-depth metadata are reliable enough.
+
+Current review pages
+
+Page | Link | Purpose
+Network overview | https://washways.org/SiteMonitor/experimental/report-visuals/network-overview.html | Whole-network review and triage
+Borehole detail | https://washways.org/SiteMonitor/experimental/report-visuals/borehole-detail.html | Single-site interpretation and supporting detail
+Cross-site comparison | https://washways.org/SiteMonitor/experimental/report-visuals/cross-site-comparison.html | Compare standout boreholes across the cohort
+Q/S method comparison | https://washways.org/SiteMonitor/experimental/report-visuals/qs-method-comparison.html | Visual plus table view of the Q/S methods across all loaded sites
+Field review board | https://washways.org/SiteMonitor/experimental/report-visuals/field-review-board.html | Practical shortlist for site visits and checks
+
+Supporting links
+Methods | https://github.com/washways/SiteMonitor/blob/main/public/experimental/METHODS.md
+Plain-language guide | https://github.com/washways/SiteMonitor/blob/main/public/experimental/report-visuals/PLAIN_ENGLISH_GUIDE.md
+
+Questions and requests for feedback
+- Does this look like a sensible way to use production borehole telemetry as a proxy window into aquifer dynamics?
+- Which Q/S approach would you trust most in this kind of operational dataset?
+- Are there better ways to separate pump-operation effects from aquifer-response signals?
+- What additional metadata would add the most value: pump curves, pump depth, installation details, step-test data, or drilling records?
+- Are there simple groundwater or climate context layers that would be worth linking in next?
+- Have you seen other practical approaches for extracting hydrogeologic insight from routine production borehole data?
+
+I would be very interested in any suggestions, critique, or data ideas.
+
+Best regards
