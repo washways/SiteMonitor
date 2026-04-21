@@ -383,9 +383,39 @@
         return dailyRows;
     }
 
+    function computeMaxDifference(levelPoints, options = {}) {
+        const restingLevels = levelPoints.map(point => point.estimated_daily_resting_level_m).filter(Number.isFinite);
+        const dynamicLevels = levelPoints.map(point => point.daily_min_groundwater_level_m).filter(Number.isFinite);
+
+        const maxResting = Math.max(...restingLevels);
+        const minDynamic = Math.min(...dynamicLevels);
+
+        return {
+            max_difference_instantaneous: maxResting - minDynamic,
+            max_difference_7d_average: computeRollingAverageDifference(levelPoints, 7)
+        };
+    }
+
+    function computeRollingAverageDifference(levelPoints, days) {
+        const rollingDifferences = [];
+        for (let i = 0; i <= levelPoints.length - days; i++) {
+            const window = levelPoints.slice(i, i + days);
+            const restingAvg = average(window.map(point => point.estimated_daily_resting_level_m).filter(Number.isFinite));
+            const dynamicAvg = average(window.map(point => point.daily_min_groundwater_level_m).filter(Number.isFinite));
+            rollingDifferences.push(restingAvg - dynamicAvg);
+        }
+        return Math.max(...rollingDifferences);
+    }
+
+    function average(values) {
+        const validValues = values.filter(Number.isFinite);
+        return validValues.length ? validValues.reduce((sum, val) => sum + val, 0) / validValues.length : null;
+    }
+
     return {
         computeDailyAnalytics,
         buildEventDetailRows,
-        computeRecoveryTimeHours
+        computeRecoveryTimeHours,
+        computeMaxDifference
     };
 });

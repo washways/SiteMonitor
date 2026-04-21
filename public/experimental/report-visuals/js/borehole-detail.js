@@ -115,14 +115,27 @@
         }, { responsive: true, displayModeBar: false });
     }
 
+    function validateDailyRows(rows) {
+        return rows.filter(row => {
+            const isValid = Number.isFinite(row.daily_max_groundwater_level_m) &&
+                            Number.isFinite(row.daily_min_groundwater_level_m) &&
+                            Number.isFinite(row.estimated_daily_resting_level_m);
+            if (!isValid) {
+                console.warn("Invalid data detected in dailyRows:", row);
+            }
+            return isValid;
+        });
+    }
+
     function renderGroundwaterChart(dailyRows, dateAxis) {
+        const validRows = validateDailyRows(dailyRows);
         Plotly.newPlot(el("groundwaterChart"), [
             {
                 type: "scatter",
                 mode: "lines+markers",
                 name: "Daily maximum level",
-                x: dailyRows.map((row) => row.date),
-                y: dailyRows.map((row) => row.daily_max_groundwater_level_m),
+                x: validRows.map((row) => row.date),
+                y: validRows.map((row) => row.daily_max_groundwater_level_m),
                 connectgaps: false,
                 line: { color: "#0284c7" }
             },
@@ -130,8 +143,8 @@
                 type: "scatter",
                 mode: "lines+markers",
                 name: "Dynamic level proxy (daily minimum)",
-                x: dailyRows.map((row) => row.date),
-                y: dailyRows.map((row) => row.daily_min_groundwater_level_m),
+                x: validRows.map((row) => row.date),
+                y: validRows.map((row) => row.daily_min_groundwater_level_m),
                 connectgaps: false,
                 fill: "tonexty",
                 line: { color: "#0f766e" }
@@ -140,8 +153,8 @@
                 type: "scatter",
                 mode: "lines+markers",
                 name: "Resting level (static proxy)",
-                x: dailyRows.map((row) => row.date),
-                y: dailyRows.map((row) => row.estimated_daily_resting_level_m),
+                x: validRows.map((row) => row.date),
+                y: validRows.map((row) => row.estimated_daily_resting_level_m),
                 connectgaps: false,
                 line: { color: "#f59e0b", dash: "dot" }
             }
