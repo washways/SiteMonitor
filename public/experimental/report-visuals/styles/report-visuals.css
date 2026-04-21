@@ -263,6 +263,16 @@ header .callout span {
     font-weight: 700;
     border-radius: 10px;
     min-width: 220px;
+    background: #0f766e;
+    color: #ffffff;
+    border: 1px solid #0f766e;
+    box-shadow: 0 8px 18px rgba(15, 118, 110, 0.2);
+}
+
+.hero-refresh-btn:hover,
+.hero-refresh-btn:focus {
+    background: #115e59;
+    border-color: #115e59;
 }
 
 .table-help {

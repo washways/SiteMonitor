@@ -693,6 +693,25 @@
         }
     }
 
+    async function loadInitialReport(options = {}) {
+        const root = options.root || document;
+        const statusTarget = options.statusTarget || null;
+        const settings = options.settings || getAnalysisSettings(root);
+
+        try {
+            return await loadReport({
+                ...options,
+                root,
+                statusTarget,
+                settings,
+                runLiveIfMissing: true
+            });
+        } catch (error) {
+            setStatus(statusTarget, "Initial shared report load did not complete. Starting a direct live load now...");
+            return await runLiveAnalysis({ root, statusTarget, settings });
+        }
+    }
+
     async function readUploadedFile(file) {
         const text = await file.text();
         const report = normalizeReport(JSON.parse(text));
@@ -758,6 +777,7 @@
         RUN_STATE_KEY,
         loadReport,
         runLiveAnalysis,
+        loadInitialReport,
         readUploadedFile,
         getFilterValues,
         getAnalysisSettings,

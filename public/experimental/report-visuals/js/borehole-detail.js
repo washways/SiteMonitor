@@ -367,11 +367,10 @@
         Loader.populateAnalysisControls(document);
 
         try {
-            reportIndex = await Loader.loadReport({
+            reportIndex = await Loader.loadInitialReport({
                 defaultUrl: DEFAULT_REPORT_URL,
                 statusTarget: el("pageStatus"),
-                root: document,
-                runLiveIfMissing: true
+                root: document
             });
             populateBoreholes(reportIndex);
             renderAll();
